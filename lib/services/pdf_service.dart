@@ -21,8 +21,6 @@ enum _CharType {
   other,
 }
 
-// ==================== ENHANCED WORD-LEVEL DIRECTION CLASSES ====================
-
 enum WordType {
   arabic,
   english,
