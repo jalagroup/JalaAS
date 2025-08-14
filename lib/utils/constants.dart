@@ -21,7 +21,7 @@ class AppConstants {
   static const String firstTimeKey = 'first_time_launch';
 
   // Security Settings
-  static const int pinLength = 6; // Changed from 4 to 6 based on your code
+  static const int pinLength = 4; // Changed from 4 to 6 based on your code
   static const int maxPinAttempts = 3;
   static const int backgroundTimeoutMinutes = 5;
   static const int maxLoginAttempts = 5;

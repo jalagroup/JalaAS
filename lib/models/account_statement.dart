@@ -86,6 +86,20 @@ class AccountStatement {
         return shownParent;
     }
   }
+
+  String get docNumber {
+    String number = documentNumber.trim();
+    switch (documentType) {
+      case 'invoice':
+        return number;
+      case 'return':
+        return number;
+      case 'payment':
+        return number;
+      default:
+        return shownParent;
+    }
+  }
 }
 
 class AccountStatementDetail {

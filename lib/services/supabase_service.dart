@@ -10,7 +10,7 @@ class SupabaseService {
     await Supabase.initialize(
       url: 'https://ykwnsmyvkwjctidhoqib.supabase.co',
       anonKey:
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrd25zbXl2a3dqY3RpZGhvcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExOTkzMzYsImV4cCI6MjA2Njc3NTMzNn0.W6WYYc-s24kX2H_-9bvWe1nG31lDlFCSVnDSqIKD5xk',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrd25zbXl2a3dqY3RpZGhvcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExOTkzMzYsImV4cCI6MjA2Njc3NTMzNn0.W6WYYc-s24kX2H_-9bvWe1nG31lDlFCSVnDSqIKD5xk',
     );
   }
 
@@ -102,7 +102,7 @@ class SupabaseService {
       if (user == null) return null;
 
       final response =
-      await _client.from('users').select().eq('id', user.id).single();
+          await _client.from('users').select().eq('id', user.id).single();
 
       return AppUser.fromJson(response);
     } catch (e) {
@@ -207,22 +207,8 @@ class SupabaseService {
     }
   }
 
-  // Contacts management
-  static Future<List<Contact>> getContacts({String? search}) async {
-    try {
-      var query = _client.from('contacts').select();
-
-      if (search != null && search.isNotEmpty) {
-        query = query.or('name_ar.ilike.%$search%,code.ilike.%$search%');
-      }
-
-      final response = await query.order('name_ar', ascending: true);
-      return response.map<Contact>((json) => Contact.fromJson(json)).toList();
-    } catch (e) {
-      print('getContacts error: $e');
-      rethrow;
-    }
-  }
+// Replace your getUserContacts method with this pagination-based approach
+// lib/services/supabase_service.dart
 
   static Future<List<Contact>> getUserContacts({
     required String salesman,
@@ -230,21 +216,177 @@ class SupabaseService {
     String? search,
   }) async {
     try {
-      var query = _client.from('contacts').select().eq('salesman', salesman);
+      print(
+          'DEBUG: getUserContacts called with salesman: "$salesman", area: "$area"');
 
-      if (area != null) {
-        query = query.eq('area', area);
+      bool isAdminUser = (salesman == '00' || salesman.isEmpty) &&
+          (area == '00' || area == null || area.isEmpty);
+
+      print('DEBUG: Is admin user in getUserContacts: $isAdminUser');
+
+      if (isAdminUser) {
+        print('DEBUG: Admin user - using pagination to get all contacts');
+        return await _getAllContactsWithPagination(search: search);
+      } else {
+        print('DEBUG: Regular user - applying filters');
+        return await _getFilteredContacts(
+          salesman: salesman,
+          area: area,
+          search: search,
+        );
       }
-
-      if (search != null && search.isNotEmpty) {
-        query = query.or('name_ar.ilike.%$search%,code.ilike.%$search%');
-      }
-
-      final response = await query.order('name_ar', ascending: true);
-      return response.map<Contact>((json) => Contact.fromJson(json)).toList();
     } catch (e) {
       print('getUserContacts error: $e');
       rethrow;
+    }
+  }
+
+// Private method to get all contacts using pagination (for admin users)
+  static Future<List<Contact>> _getAllContactsWithPagination(
+      {String? search}) async {
+    List<Contact> allContacts = [];
+    int pageSize = 1000;
+    int page = 0;
+    bool hasMore = true;
+
+    print('DEBUG: Starting pagination to load all contacts...');
+
+    while (hasMore) {
+      try {
+        var query = _client.from('contacts').select();
+
+        if (search != null && search.isNotEmpty) {
+          query = query.or('name_ar.ilike.%$search%,code.ilike.%$search%');
+        }
+
+        // Get page with range
+        final response = await query
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+            .order('name_ar', ascending: true);
+
+        final pageContacts =
+            response.map<Contact>((json) => Contact.fromJson(json)).toList();
+        allContacts.addAll(pageContacts);
+
+        print(
+            'DEBUG: Page ${page + 1}: loaded ${pageContacts.length} contacts (total: ${allContacts.length})');
+
+        // If we got fewer than pageSize, we've reached the end
+        hasMore = pageContacts.length == pageSize;
+        page++;
+
+        // Safety check to prevent infinite loops
+        if (page > 50) {
+          print('DEBUG: Reached maximum page limit (50 pages)');
+          break;
+        }
+      } catch (e) {
+        print('DEBUG: Error loading page $page: $e');
+        break;
+      }
+    }
+
+    print(
+        'DEBUG: Pagination complete. Total contacts loaded: ${allContacts.length}');
+    return allContacts;
+  }
+
+// Private method to get filtered contacts (for regular users)
+  static Future<List<Contact>> _getFilteredContacts({
+    required String salesman,
+    String? area,
+    String? search,
+  }) async {
+    var query = _client.from('contacts').select();
+
+    // Apply salesman filter
+    query = query.eq('salesman', salesman);
+
+    // Apply area filter if provided
+    if (area != null && area.isNotEmpty && area != '00') {
+      query = query.eq('area', area);
+      print('DEBUG: Applied area filter: $area');
+    }
+
+    // Apply search filter if provided
+    if (search != null && search.isNotEmpty) {
+      query = query.or('name_ar.ilike.%$search%,code.ilike.%$search%');
+    }
+
+    // For regular users, we might still need pagination if they have many contacts
+    List<Contact> allContacts = [];
+    int pageSize = 1000;
+    int page = 0;
+    bool hasMore = true;
+
+    while (hasMore) {
+      final response = await query
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+          .order('name_ar', ascending: true);
+
+      final pageContacts =
+          response.map<Contact>((json) => Contact.fromJson(json)).toList();
+      allContacts.addAll(pageContacts);
+
+      print(
+          'DEBUG: Regular user page ${page + 1}: loaded ${pageContacts.length} contacts');
+
+      hasMore = pageContacts.length == pageSize;
+      page++;
+
+      // Safety check
+      if (page > 10)
+        break; // Regular users shouldn't have more than 10k contacts
+    }
+
+    return allContacts;
+  }
+
+// Update getContacts method to also use pagination
+  static Future<List<Contact>> getContacts({String? search}) async {
+    try {
+      print('DEBUG: getContacts called with search: "$search"');
+      return await _getAllContactsWithPagination(search: search);
+    } catch (e) {
+      print('getContacts error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<int> getTotalContactsCount() async {
+    try {
+      final response = await _client.rpc('get_contacts_count').select();
+      return response[0]['count'] as int;
+    } catch (e) {
+      print('Error getting contacts count: $e');
+      return 0;
+    }
+  }
+
+// Test method to verify pagination is working
+  static Future<void> testPagination() async {
+    try {
+      print('=== TESTING PAGINATION ===');
+
+      // Get total count
+      int totalCount = await getTotalContactsCount();
+      print('DEBUG: Database reports $totalCount total contacts');
+
+      // Test pagination
+      List<Contact> paginatedContacts = await _getAllContactsWithPagination();
+      print('DEBUG: Pagination loaded ${paginatedContacts.length} contacts');
+
+      // Compare
+      if (paginatedContacts.length == totalCount) {
+        print('✅ SUCCESS: All contacts loaded via pagination');
+      } else {
+        print(
+            '⚠️  WARNING: Expected $totalCount, got ${paginatedContacts.length}');
+      }
+
+      print('=== END TEST ===');
+    } catch (e) {
+      print('DEBUG: Test failed: $e');
     }
   }
 

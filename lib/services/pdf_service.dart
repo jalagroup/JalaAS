@@ -73,13 +73,23 @@ class PdfService {
   static pw.Font? _englishFont;
   static pw.Font? _englishBoldFont;
 
-  // Load fonts once and cache them
+// Updated _loadFonts method - use local fonts instead of Google Fonts
   static Future<void> _loadFonts() async {
     if (_arabicFont == null) {
-      _arabicFont = await PdfGoogleFonts.notoSansArabicRegular();
-      _arabicBoldFont = await PdfGoogleFonts.notoSansArabicBold();
-      _englishFont = await PdfGoogleFonts.robotoRegular();
-      _englishBoldFont = await PdfGoogleFonts.robotoBold();
+      // Load local fonts from assets
+      final arabicRegularData =
+          await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+      final arabicBoldData =
+          await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf');
+      final englishRegularData = await rootBundle.load(
+          'assets/fonts/NotoSansArabic-Regular.ttf'); // Use Arabic font for English too
+      final englishBoldData = await rootBundle.load(
+          'assets/fonts/NotoSansArabic-Bold.ttf'); // Use Arabic font for English too
+
+      _arabicFont = pw.Font.ttf(arabicRegularData);
+      _arabicBoldFont = pw.Font.ttf(arabicBoldData);
+      _englishFont = pw.Font.ttf(englishRegularData);
+      _englishBoldFont = pw.Font.ttf(englishBoldData);
     }
   }
 
@@ -1013,18 +1023,19 @@ class PdfService {
     }
   }
 
-  /// Create table cell with newline support and consistent center alignment
+  /// Create table cell with newline support and minimal vertical padding
   static pw.Widget createTableCell(
     String text, {
     bool isHeader = false,
     bool isBold = false,
-    double minHeight = 16.0, // Increased back to 16.0 for better readability
+    double minHeight = 8.0, // Reduced from 12.0 to 8.0
     bool greyBackground = false,
     pw.TextAlign? textAlign,
     double? fixedWidth,
   }) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(2), // Slightly increased padding
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 1, vertical: 0.5), // Reduced to minimal padding
       constraints: pw.BoxConstraints(
         minHeight: minHeight,
         maxWidth: fixedWidth ?? double.infinity,
@@ -1037,7 +1048,7 @@ class PdfService {
         child: createWordLevelTextWidgetWithNewlines(
           text,
           isBold: isHeader || isBold,
-          fontSize: 8,
+          fontSize: 7, // Reduced font size from 8 to 7
           textAlign: pw.TextAlign.center,
           maxLines: text.contains('\n')
               ? null
@@ -1047,7 +1058,7 @@ class PdfService {
     );
   }
 
-  /// Create table cell specifically for notes column with proper text wrapping
+  /// Create table cell specifically for notes column with minimal vertical padding
   static pw.Widget createNotesTableCell(
     String text, {
     bool isHeader = false,
@@ -1055,9 +1066,10 @@ class PdfService {
     bool greyBackground = false,
   }) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(2), // Slightly more padding for notes
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 1, vertical: 0.5), // Reduced to minimal padding
       constraints: const pw.BoxConstraints(
-        minHeight: 16.0, // Fixed minimum height for notes
+        minHeight: 8.0, // Reduced from 12.0 to 8.0
         maxWidth: 120,
       ),
       decoration: greyBackground
@@ -1070,19 +1082,19 @@ class PdfService {
           style: _getStyleForWordType(
             WordType.arabic,
             text,
-            fontSize: 8,
+            fontSize: 7, // Reduced font size from 8 to 7
             isBold: isHeader || isBold,
           ),
           textAlign: pw.TextAlign.center,
           textDirection: pw.TextDirection.rtl,
           maxLines: 2,
-          overflow: pw.TextOverflow.clip, // Use ellipsis instead of clip
+          overflow: pw.TextOverflow.clip,
         ),
       ),
     );
   }
 
-  /// Create regular table cell with newline support
+  /// Create regular table cell with minimal vertical padding
   static pw.Widget createRegularTableCell(
     String text, {
     bool isHeader = false,
@@ -1090,9 +1102,10 @@ class PdfService {
     bool greyBackground = false,
   }) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(2),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 1, vertical: 0.5), // Reduced to minimal padding
       constraints: const pw.BoxConstraints(
-        minHeight: 16.0,
+        minHeight: 8.0, // Reduced from 12.0 to 8.0
       ),
       decoration: greyBackground
           ? const pw.BoxDecoration(color: PdfColors.grey200)
@@ -1101,20 +1114,21 @@ class PdfService {
         child: createWordLevelTextWidgetWithNewlines(
           text,
           isBold: isHeader || isBold,
-          fontSize: 8,
+          fontSize: 7, // Reduced font size from 8 to 7
           textAlign: pw.TextAlign.center,
         ),
       ),
     );
   }
 
-  /// Create empty table cell with consistent height
+  /// Create empty table cell with minimal height
   static pw.Widget createEmptyCell({
-    double minHeight = 16.0,
+    double minHeight = 8.0, // Reduced from 12.0 to 8.0
     bool greyBackground = false,
   }) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(2),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 1, vertical: 0.5), // Reduced to minimal padding
       constraints: pw.BoxConstraints(minHeight: minHeight),
       decoration: greyBackground
           ? const pw.BoxDecoration(color: PdfColors.grey200)
@@ -1125,7 +1139,7 @@ class PdfService {
     );
   }
 
-  /// Create contact information section with newline support
+  /// Create contact information section with minimal vertical spacing
   static pw.Widget createContactInfoSection(Contact contact) {
     return pw.Container(
       width: 200,
@@ -1137,11 +1151,12 @@ class PdfService {
             decoration: const pw.BoxDecoration(color: PdfColors.grey200),
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 2, vertical: 1), // Minimal padding
                 child: createWordLevelTextWidgetWithNewlines(
                   contact.code,
                   isBold: true,
-                  fontSize: 10,
+                  fontSize: 9, // Reduced from 10 to 9
                   textAlign: pw.TextAlign.center,
                 ),
               ),
@@ -1151,7 +1166,8 @@ class PdfService {
           pw.TableRow(
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 2, vertical: 1), // Minimal padding
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
@@ -1159,10 +1175,12 @@ class PdfService {
                     pw.Container(
                       width: double.infinity,
                       alignment: pw.Alignment.centerRight,
+                      margin: const pw.EdgeInsets.only(
+                          bottom: 0.5), // Minimal margin
                       child: createWordLevelTextWidgetWithNewlines(
                         _cleanText(contact.nameAr),
                         isBold: true,
-                        fontSize: 10,
+                        fontSize: 9, // Reduced from 10 to 9
                         textAlign: pw.TextAlign.right,
                       ),
                     ),
@@ -1172,9 +1190,11 @@ class PdfService {
                         width: double.infinity,
                         constraints: const pw.BoxConstraints(maxWidth: 180),
                         alignment: pw.Alignment.centerRight,
+                        margin: const pw.EdgeInsets.only(
+                            bottom: 0.5), // Minimal margin
                         child: createWordLevelTextWidgetWithNewlines(
                           _cleanText(contact.streetAddress!),
-                          fontSize: 9,
+                          fontSize: 8, // Reduced from 9 to 8
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
@@ -1183,9 +1203,11 @@ class PdfService {
                       pw.Container(
                         width: double.infinity,
                         alignment: pw.Alignment.centerRight,
+                        margin: const pw.EdgeInsets.only(
+                            bottom: 0.5), // Minimal margin
                         child: createWordLevelTextWidgetWithNewlines(
                           'رقم الضريبة: ${contact.taxId}',
-                          fontSize: 9,
+                          fontSize: 8, // Reduced from 9 to 8
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
@@ -1196,7 +1218,7 @@ class PdfService {
                         alignment: pw.Alignment.centerRight,
                         child: createWordLevelTextWidgetWithNewlines(
                           'تلفون: ${contact.phone}',
-                          fontSize: 9,
+                          fontSize: 8, // Reduced from 9 to 8
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
@@ -1210,7 +1232,7 @@ class PdfService {
     );
   }
 
-  /// Create notes section
+  /// Create notes section with minimal vertical spacing
   static pw.Widget createNotesSection(String notes) {
     return pw.Container(
       width: 200,
@@ -1222,11 +1244,12 @@ class PdfService {
             decoration: const pw.BoxDecoration(color: PdfColors.grey200),
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 2, vertical: 1), // Minimal padding
                 child: createWordLevelTextWidget(
                   'ملاحظة',
                   isBold: true,
-                  fontSize: 10,
+                  fontSize: 9, // Reduced from 10 to 9
                   textAlign: pw.TextAlign.center,
                 ),
               ),
@@ -1236,12 +1259,13 @@ class PdfService {
           pw.TableRow(
             children: [
               pw.Container(
-                padding: const pw.EdgeInsets.all(4),
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 2, vertical: 1), // Minimal padding
                 width: double.infinity,
                 alignment: pw.Alignment.centerRight,
                 child: createWordLevelTextWidget(
                   notes.isNotEmpty ? _cleanText(notes) : '-',
-                  fontSize: 9,
+                  fontSize: 8, // Reduced from 9 to 8
                   textAlign: pw.TextAlign.right,
                 ),
               ),
@@ -1315,7 +1339,7 @@ class PdfService {
     );
   }
 
-  /// Create items table with totals - WITHOUT NOTES SECTION
+// Updated createItemsTable method - show discount and after-discount rows always
   static pw.Widget createItemsTable({
     required List<AccountStatementDetail> items,
     required double totalAmount,
@@ -1378,8 +1402,22 @@ class PdfService {
           ],
         ),
 
-        // Discount (if applicable) with consistent height
-        if (discount > 0)
+        // Tax row (show always, even if 0)
+        pw.TableRow(
+          children: [
+            createRegularTableCell(_formatNumber(tax.toString())),
+            createRegularTableCell('ضريبة ال 16%',
+                isHeader: true, greyBackground: true),
+            createEmptyCell(greyBackground: true),
+            createEmptyCell(greyBackground: true),
+            createEmptyCell(greyBackground: true),
+            createEmptyCell(greyBackground: true),
+            createEmptyCell(greyBackground: true),
+          ],
+        ),
+
+        // Discount row (show always, even if 0 or negative)
+        if (discount != 0 && discount != null)
           pw.TableRow(
             children: [
               createRegularTableCell(_formatNumber(discount.toString())),
@@ -1393,27 +1431,12 @@ class PdfService {
             ],
           ),
 
-        // After discount (if applicable) with consistent height
-        if (discount > 0)
+        // After discount row (show always)
+        if (discount != 0 && discount != null)
           pw.TableRow(
             children: [
               createRegularTableCell(_formatNumber(afterDiscount.toString())),
               createRegularTableCell('بعد الخصم',
-                  isHeader: true, greyBackground: true),
-              createEmptyCell(greyBackground: true),
-              createEmptyCell(greyBackground: true),
-              createEmptyCell(greyBackground: true),
-              createEmptyCell(greyBackground: true),
-              createEmptyCell(greyBackground: true),
-            ],
-          ),
-
-        // Tax (if applicable) with consistent height
-        if (tax > 0)
-          pw.TableRow(
-            children: [
-              createRegularTableCell(_formatNumber(tax.toString())),
-              createRegularTableCell('ضريبة 16%',
                   isHeader: true, greyBackground: true),
               createEmptyCell(greyBackground: true),
               createEmptyCell(greyBackground: true),
@@ -1512,7 +1535,7 @@ class PdfService {
     ];
   }
 
-  /// Create account statement table headers - WITHOUT NOTES COLUMN
+  /// Create account statement table headers with minimal spacing
   static List<pw.TableRow> createAccountStatementHeaders() {
     return [
       pw.TableRow(
@@ -1529,7 +1552,7 @@ class PdfService {
     ];
   }
 
-  /// Create payment receipt table - WITH NEWLINE SUPPORT
+  /// Create payment receipt table with minimal vertical spacing
   static pw.Widget createPaymentReceiptTable(
       List<AccountStatementDetail> details) {
     return pw.Table(
@@ -1708,7 +1731,7 @@ class PdfService {
     }
   }
 
-  /// Generate Invoice Detail PDF - WITHOUT NOTES SECTION
+// Updated generateInvoiceDetailPdf method - fix calculation to match mobile screen
   static Future<Uint8List> generateInvoiceDetailPdf({
     required Contact contact,
     required List<AccountStatementDetail> details,
@@ -1721,23 +1744,34 @@ class PdfService {
 
     final pdf = pw.Document();
 
-    // Calculate totals
+    // Calculate totals - MATCH THE MOBILE SCREEN LOGIC EXACTLY
     double totalAmount = 0;
     double tax = 0;
     double discount = 0;
 
     final items = details.where((d) => d.item.isNotEmpty).toList();
+
+    // Calculate total amount
     for (final item in items) {
       totalAmount += _parseNumber(item.amount);
     }
 
+    // Get tax and discount from items (same logic as mobile screen)
     if (items.isNotEmpty) {
-      tax = _parseNumber(items.last.tax);
-      discount = _parseNumber(items.last.docDiscount);
+      for (final item in items) {
+        if (item.tax.isNotEmpty) {
+          tax = _parseNumber(item.tax);
+        }
+        if (item.docDiscount.isNotEmpty) {
+          discount = _parseNumber(item.docDiscount);
+        }
+      }
     }
 
-    final afterDiscount = totalAmount - discount;
-    final netAmount = afterDiscount;
+    // Calculate after discount and net amount (match mobile screen exactly)
+    final afterDiscount =
+        totalAmount - discount; // Don't round here like mobile screen
+    final netAmount = afterDiscount; // Add tax to get final net amount
 
     // Extract document info
     String docDate = details.isNotEmpty && details.first.docDate.isNotEmpty
@@ -1812,8 +1846,6 @@ class PdfService {
                     ),
                   ],
 
-                  // REMOVED: Notes section is no longer included
-
                   // Footer for invoices only
                   if (docType == 'فاتورة') ...createInvoiceFooter(),
                 ],
@@ -1871,8 +1903,8 @@ class PdfService {
     }
 
     // ADJUSTED PAGINATION - More rows per page without notes column
-    const int firstPageRows = 19; // Increased due to no notes column
-    const int otherPageRows = 34; // Increased due to no notes column
+    const int firstPageRows = 26; // Increased due to no notes column
+    const int otherPageRows = 46; // Increased due to no notes column
 
     // Calculate total pages needed
     int totalPages = 1;

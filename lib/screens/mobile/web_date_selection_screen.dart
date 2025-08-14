@@ -158,7 +158,7 @@ class _DateRangeScreenState extends State<DateRangeScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(15),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -230,7 +230,7 @@ class _DateRangeScreenState extends State<DateRangeScreen> {
                             Text(
                               widget.contact.nameAr,
                               style: const TextStyle(
-                                fontSize: 18,
+                                fontSize: 15,
                                 fontWeight: FontWeight.bold,
                                 color: Color(AppConstants.primaryColor),
                               ),
@@ -262,7 +262,7 @@ class _DateRangeScreenState extends State<DateRangeScreen> {
                                 Text(
                                   widget.contact.code,
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color:
                                         const Color(AppConstants.accentColor),

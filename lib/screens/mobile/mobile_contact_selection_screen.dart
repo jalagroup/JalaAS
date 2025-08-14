@@ -194,7 +194,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                       hintText: 'ادخل اسم العميل أو رقمه',
                       prefixIcon: Container(
                         margin: const EdgeInsets.all(12),
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
                           color: const Color(AppConstants.accentColor),
                           borderRadius: BorderRadius.circular(10),
@@ -219,7 +219,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                       filled: true,
                       fillColor: Colors.white,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 18),
+                          horizontal: 13, vertical: 15),
                     ),
                   ),
                 ),
@@ -384,7 +384,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                             ),
                           )
                         : Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 15),
                             child: ListView.builder(
                               itemCount: _filteredContacts.length,
                               itemBuilder: (context, index) {
@@ -409,7 +409,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                       onTap: () => _selectContact(contact),
                                       borderRadius: BorderRadius.circular(16),
                                       child: Padding(
-                                        padding: const EdgeInsets.all(20),
+                                        padding: const EdgeInsets.all(14),
                                         child: Row(
                                           children: [
                                             // Enhanced Avatar
@@ -461,7 +461,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                                     style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.w700,
-                                                      fontSize: 18,
+                                                      fontSize: 14,
                                                       color: Color(AppConstants
                                                           .primaryColor),
                                                     ),
@@ -494,7 +494,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                                         child: Text(
                                                           '#',
                                                           style: TextStyle(
-                                                            fontSize: 12,
+                                                            fontSize: 11,
                                                             fontWeight:
                                                                 FontWeight.w600,
                                                             color: const Color(
@@ -507,7 +507,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                                       Text(
                                                         contact.code,
                                                         style: TextStyle(
-                                                          fontSize: 16,
+                                                          fontSize: 12,
                                                           fontWeight:
                                                               FontWeight.w600,
                                                           color: const Color(
@@ -558,6 +558,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
   }
 }
 
+// Update the _MyHomeAppBar class in your ContactSelectionScreen
+
 class _MyHomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final AppUser currentUser;
   final VoidCallback onLogout;
@@ -574,7 +576,11 @@ class _MyHomeAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       elevation: 4,
       backgroundColor: const Color(AppConstants.primaryColor),
-      automaticallyImplyLeading: false,
+      // Remove automaticallyImplyLeading: false to show back button
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
       title: Row(
         children: [
           // Logo in AppBar with white background
@@ -609,36 +615,17 @@ class _MyHomeAppBar extends StatelessWidget implements PreferredSizeWidget {
 
           const SizedBox(width: 12),
 
-          // User Info - Simplified
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "${getGreetingMessage()} ${currentUser.username}",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (currentUser.salesman.isNotEmpty ||
-                    currentUser.area != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'مندوب: ${currentUser.salesman}${currentUser.area != null ? ' - منطقة: ${currentUser.area}' : ''}',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
+          // Title instead of user greeting since we have less space
+          const Expanded(
+            child: Text(
+              'اختيار العميل',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

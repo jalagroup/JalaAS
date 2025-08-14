@@ -1,5 +1,6 @@
 // lib/screens/mobile/mobile_login_screen.dart
 import 'package:flutter/material.dart';
+import 'package:jala_as/screens/mobile/welcome_screen.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
@@ -59,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
-                builder: (context) => const ContactSelectionScreen(),
+                builder: (context) => const WelcomeScreen(),
               ),
             );
           }
@@ -308,38 +309,57 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 32),
 
-                    // Login Button
-                    SizedBox(
+// Replace the Login Button section in your LoginScreen with this:
+
+// Login Button
+                    Container(
                       width: double.infinity,
-                      height: 50,
+                      height: 56,
+                      margin: const EdgeInsets.symmetric(horizontal: 0),
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _login,
                         style: ElevatedButton.styleFrom(
                           backgroundColor:
                               const Color(AppConstants.accentColor),
+                          foregroundColor: Colors.white,
                           disabledBackgroundColor: Colors.grey[300],
+                          disabledForegroundColor: Colors.grey[600],
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          elevation: 0,
+                          elevation: 2,
+                          shadowColor: const Color(AppConstants.accentColor)
+                              .withOpacity(0.3),
+                          padding: EdgeInsets.zero, // Remove default padding
+                          minimumSize: const Size(double.infinity, 56),
                         ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                                strokeWidth: 2,
-                              )
-                            : const Text(
-                                'تسجيل الدخول',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                        child: Container(
+                          width: double.infinity,
+                          height: 56,
+                          alignment:
+                              Alignment.center, // This centers the content
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                    strokeWidth: 3,
+                                  ),
+                                )
+                              : const Text(
+                                  'تسجيل الدخول',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
-                              ),
+                        ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
 
                     // Info Message

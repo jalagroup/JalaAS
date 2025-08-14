@@ -1,4 +1,6 @@
 // lib/screens/mobile/mobile_statement_detail_screen.dart
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../models/contact.dart';
@@ -134,6 +136,7 @@ class _StatementDetailScreenState extends State<StatementDetailScreen> {
     }
   }
 
+// FOR STATEMENT DETAIL SCREEN - Updated _generatePdf and dialog methods
   Future<void> _generatePdf() async {
     setState(() {
       _isGeneratingPdf = true;
@@ -146,12 +149,18 @@ class _StatementDetailScreenState extends State<StatementDetailScreen> {
         documentTitle: ArabicTextHelper.cleanText(widget.statement.displayName),
       );
 
-      await Printing.layoutPdf(
-        onLayout: (format) async => pdfBytes,
-        name:
-            '${widget.statement.documentType}_${widget.contact.code}_${widget.statement.documentNumber}.pdf',
-      );
+      setState(() {
+        _isGeneratingPdf = false;
+      });
+
+      // Show PDF action dialog
+      if (mounted) {
+        _showPdfActionDialog(pdfBytes);
+      }
     } catch (e) {
+      setState(() {
+        _isGeneratingPdf = false;
+      });
       if (mounted) {
         Helpers.showSnackBar(
           context,
@@ -159,12 +168,541 @@ class _StatementDetailScreenState extends State<StatementDetailScreen> {
           isError: true,
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isGeneratingPdf = false;
-        });
-      }
+    }
+  }
+
+// Updated PDF action dialog for statement detail screen
+  void _showPdfActionDialog(Uint8List pdfBytes) {
+    // Create safe filename
+    final String safeFilename = _createSafeFilename(
+        '${widget.statement.documentType}_${widget.contact.code}_${DateTime.now().millisecondsSinceEpoch}');
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color:
+                      const Color(AppConstants.primaryColor).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.picture_as_pdf,
+                  color: Color(AppConstants.primaryColor),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'خيارات PDF',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(AppConstants.primaryColor),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPdfActionButton(
+                icon: Icons.print,
+                title: 'طباعة',
+                subtitle: 'طباعة المستند مباشرة',
+                color: Colors.blue,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  try {
+                    await Printing.layoutPdf(
+                      onLayout: (format) async => pdfBytes,
+                      name: safeFilename,
+                    );
+                  } catch (e) {
+                    if (mounted) {
+                      Helpers.showSnackBar(
+                        context,
+                        'فشل في الطباعة: ${e.toString()}',
+                        isError: true,
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.download,
+                title: 'تحميل',
+                subtitle: 'حفظ الملف في الجهاز',
+                color: Colors.green,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  try {
+                    await Printing.sharePdf(
+                      bytes: pdfBytes,
+                      filename: safeFilename,
+                    );
+                  } catch (e) {
+                    if (mounted) {
+                      Helpers.showSnackBar(
+                        context,
+                        'فشل في التحميل: ${e.toString()}',
+                        isError: true,
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.share,
+                title: 'مشاركة',
+                subtitle: 'مشاركة الملف مع التطبيقات الأخرى',
+                color: Colors.orange,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  try {
+                    await Printing.sharePdf(
+                      bytes: pdfBytes,
+                      filename: safeFilename,
+                    );
+                    if (mounted) {
+                      Helpers.showSnackBar(
+                        context,
+                        'تم تحضير الملف للمشاركة',
+                        isError: false,
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      Helpers.showSnackBar(
+                        context,
+                        'فشل في المشاركة: ${e.toString()}',
+                        isError: true,
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.open_in_new,
+                title: 'فتح',
+                subtitle: 'فتح الملف في تطبيق PDF',
+                color: Colors.purple,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  try {
+                    await Printing.layoutPdf(
+                      onLayout: (format) async => pdfBytes,
+                      name: safeFilename,
+                    );
+                  } catch (e) {
+                    if (mounted) {
+                      Helpers.showSnackBar(
+                        context,
+                        'فشل في فتح الملف: ${e.toString()}',
+                        isError: true,
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'إلغاء',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// Helper method to create safe filenames (add to both screens)
+  String _createSafeFilename(String originalName) {
+    // Remove special characters and replace with safe alternatives
+    String safeName = originalName
+        .replaceAll(RegExp(r'[^\w\s-_.]'), '') // Remove special chars
+        .replaceAll(RegExp(r'\s+'), '_') // Replace spaces with underscores
+        .replaceAll('/', '_') // Replace slashes
+        .replaceAll('\\', '_') // Replace backslashes
+        .replaceAll(':', '_') // Replace colons
+        .replaceAll('*', '_') // Replace asterisks
+        .replaceAll('?', '_') // Replace question marks
+        .replaceAll('"', '_') // Replace quotes
+        .replaceAll('<', '_') // Replace less than
+        .replaceAll('>', '_') // Replace greater than
+        .replaceAll('|', '_'); // Replace pipes
+
+    // Ensure it ends with .pdf
+    if (!safeName.toLowerCase().endsWith('.pdf')) {
+      safeName += '.pdf';
+    }
+
+    // Limit length to avoid filesystem issues
+    if (safeName.length > 100) {
+      safeName = safeName.substring(0, 96) + '.pdf';
+    }
+
+    return safeName;
+  }
+
+// Helper method to build PDF action buttons (same for both screens)
+  Widget _buildPdfActionButton({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(AppConstants.primaryColor),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey[400],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Updated _buildContent method with enhanced document header
+  Widget _buildContent() {
+    final documentType = widget.statement.documentType;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Enhanced Document Header Card (similar to contact info style)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 0),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Document Icon
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _getDocumentTypeColor(widget.statement.documentType),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            _getDocumentTypeColor(widget.statement.documentType)
+                                .withOpacity(0.3),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _getDocumentTypeIcon(widget.statement.documentType),
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                // Document Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ArabicTextHelper.cleanText(
+                            widget.statement.displayName),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(AppConstants.primaryColor),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _getDocumentTypeColor(
+                                      widget.statement.documentType)
+                                  .withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              Helpers.getDocumentTypeInArabic(
+                                  widget.statement.documentType),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _getDocumentTypeColor(
+                                    widget.statement.documentType),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(AppConstants.accentColor)
+                                  .withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              '#',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Color(AppConstants.accentColor),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            widget.statement.documentNumber ?? 'غير محدد',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(AppConstants.accentColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.date_range,
+                            size: 14,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            widget.statement.docDate,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Details count badge
+                if (_details.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(AppConstants.primaryColor)
+                          .withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(AppConstants.primaryColor)
+                            .withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          '${_details.length}',
+                          style: const TextStyle(
+                            color: Color(AppConstants.primaryColor),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          'تفصيل',
+                          style: TextStyle(
+                            color: const Color(AppConstants.primaryColor),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Document Comment if exists
+          if (_details.isNotEmpty && _details.first.docComment.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[25],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.blue[200]!,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.comment,
+                    size: 20,
+                    color: Colors.blue[600],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ملاحظة:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          ArabicTextHelper.cleanText(_details.first.docComment),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.blue[700],
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Content based on document type
+          if (documentType == 'payment')
+            _buildPaymentDetails()
+          else
+            _buildInvoiceDetails(),
+        ],
+      ),
+    );
+  }
+
+// Helper method to get document type color
+  Color _getDocumentTypeColor(String documentType) {
+    switch (documentType) {
+      case 'invoice':
+        return const Color(AppConstants.primaryColor);
+      case 'return':
+        return const Color(AppConstants.accentColor);
+      case 'payment':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+// Helper method to get document type icon
+  IconData _getDocumentTypeIcon(String documentType) {
+    switch (documentType) {
+      case 'invoice':
+        return Icons.receipt;
+      case 'return':
+        return Icons.undo;
+      case 'payment':
+        return Icons.payment;
+      default:
+        return Icons.description;
     }
   }
 
@@ -232,79 +770,6 @@ class _StatementDetailScreenState extends State<StatementDetailScreen> {
                   ),
                 )
               : _buildContent(),
-    );
-  }
-
-  Widget _buildContent() {
-    final documentType = widget.statement.documentType;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Document Title
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ArabicTextHelper.cleanText(widget.statement.displayName),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (_details.isNotEmpty &&
-                      _details.first.docComment.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'ملاحظة:',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            ArabicTextHelper.cleanText(
-                                _details.first.docComment),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Content based on document type
-          if (documentType == 'payment')
-            _buildPaymentDetails()
-          else
-            _buildInvoiceDetails(),
-        ],
-      ),
     );
   }
 
@@ -850,7 +1315,8 @@ class _StatementDetailScreenState extends State<StatementDetailScreen> {
                     _buildTotalRow('المجموع', totalAmount),
                     if (tax > 0) _buildTotalRow('ضريبة ال 16%', tax),
                     if (discount != 0) _buildTotalRow('الخصم', discount),
-                    _buildTotalRow('بعد الخصم', afterDiscount),
+                    if (discount != 0)
+                      _buildTotalRow('بعد الخصم', afterDiscount),
                     const Divider(height: 8),
                     _buildTotalRow('الصافي', netAmount, isNet: true),
                   ],

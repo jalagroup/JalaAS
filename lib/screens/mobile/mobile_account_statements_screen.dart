@@ -1,4 +1,6 @@
 // lib/screens/mobile/mobile_account_statements_screen.dart
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../models/contact.dart';
@@ -100,7 +102,7 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
     }
   }
 
-  // Generate PDF of the account statements
+// Updated _generatePdf method with dialog
   Future<void> _generatePdf() async {
     setState(() {
       _isGeneratingPdf = true;
@@ -114,27 +116,209 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
         toDate: widget.toDate,
       );
 
-      await Printing.layoutPdf(
-        onLayout: (format) async => pdfBytes,
-        name:
-            'كشف_حساب_${widget.contact.code}_${widget.fromDate}_${widget.toDate}.pdf',
-      );
-    } catch (e) {
+      setState(() {
+        _isGeneratingPdf = false;
+      });
+
+      // Show PDF action dialog
       if (mounted) {
-        // Check if the widget is still mounted
+        _showPdfActionDialog(pdfBytes);
+      }
+    } catch (e) {
+      setState(() {
+        _isGeneratingPdf = false;
+      });
+      if (mounted) {
         Helpers.showSnackBar(
           context,
           'فشل في إنشاء ملف PDF: ${e.toString()}',
           isError: true,
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isGeneratingPdf = false;
-        });
-      }
     }
+  }
+
+// New method to show PDF action dialog
+  void _showPdfActionDialog(Uint8List pdfBytes) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color:
+                      const Color(AppConstants.primaryColor).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.picture_as_pdf,
+                  color: Color(AppConstants.primaryColor),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'خيارات PDF',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(AppConstants.primaryColor),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPdfActionButton(
+                icon: Icons.print,
+                title: 'طباعة',
+                subtitle: 'طباعة كشف الحساب مباشرة',
+                color: Colors.blue,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await Printing.layoutPdf(
+                    onLayout: (format) async => pdfBytes,
+                    name:
+                        'كشف_حساب_${widget.contact.code}_${widget.fromDate}_${widget.toDate}.pdf',
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.download,
+                title: 'تحميل',
+                subtitle: 'حفظ الملف في الجهاز',
+                color: Colors.green,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await Printing.sharePdf(
+                    bytes: pdfBytes,
+                    filename:
+                        'كشف_حساب_${widget.contact.code}_${widget.fromDate}_${widget.toDate}.pdf',
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.share,
+                title: 'مشاركة',
+                subtitle: 'مشاركة الملف مع التطبيقات الأخرى',
+                color: Colors.orange,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await Printing.sharePdf(
+                    bytes: pdfBytes,
+                    filename:
+                        'كشف_حساب_${widget.contact.code}_${widget.fromDate}_${widget.toDate}.pdf',
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPdfActionButton(
+                icon: Icons.open_in_new,
+                title: 'فتح',
+                subtitle: 'فتح الملف في تطبيق PDF',
+                color: Colors.purple,
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await Printing.layoutPdf(
+                    onLayout: (format) async => pdfBytes,
+                    name:
+                        'كشف_حساب_${widget.contact.code}_${widget.fromDate}_${widget.toDate}.pdf',
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'إلغاء',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// Helper method to build PDF action buttons
+  Widget _buildPdfActionButton({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(AppConstants.primaryColor),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey[400],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // View the details of a specific statement
@@ -217,7 +401,7 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -273,7 +457,7 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
                           Text(
                             ArabicTextHelper.cleanText(widget.contact.nameAr),
                             style: const TextStyle(
-                              fontSize: 18,
+                              fontSize: 15,
                               fontWeight: FontWeight.bold,
                               color: Color(AppConstants.primaryColor),
                             ),
@@ -305,7 +489,7 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
                               Text(
                                 widget.contact.code,
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: const Color(AppConstants.accentColor),
                                 ),

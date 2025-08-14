@@ -1,10 +1,11 @@
 // lib/screens/mobile/pin_enter_screen.dart
 import 'package:flutter/material.dart';
+import 'package:jala_as/screens/mobile/mobile_contact_selection_screen.dart';
+import 'package:jala_as/screens/mobile/mobile_login_screen.dart';
+import 'package:jala_as/screens/mobile/welcome_screen.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
-import 'login_screen.dart';
-import 'contact_selection_screen.dart';
 
 class PinEnterScreen extends StatefulWidget {
   final VoidCallback onPinVerified;
@@ -81,7 +82,7 @@ class _PinEnterScreenState extends State<PinEnterScreen> {
 
         if (isLoggedIn) {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const ContactSelectionScreen()),
+            MaterialPageRoute(builder: (_) => const WelcomeScreen()),
           );
         } else {
           Navigator.of(context).pushReplacement(
@@ -127,200 +128,216 @@ class _PinEnterScreenState extends State<PinEnterScreen> {
     }
   }
 
-// lib/screens/mobile/pin_enter_screen.dart - Updated build method
+// lib/screens/mobile/pin_enter_screen.dart - Updated build method for responsiveness
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isTablet = screenSize.width > 600;
+
     return Scaffold(
       backgroundColor: const Color(AppConstants.backgroundColor),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                  maxWidth: 500,
-                ),
-                child: Center(
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20.0, vertical: 16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Expanded(flex: 1, child: SizedBox()),
+        child: Center(
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              maxWidth: isTablet ? 500 : screenSize.width * 0.9,
+            ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 40 : 20,
+                vertical: 20,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Add top spacing for tablets
+                  SizedBox(height: isTablet ? screenSize.height * 0.1 : 40),
 
-                          // App Logo
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(AppConstants.primaryColor)
-                                      .withOpacity(0.1),
-                                  spreadRadius: 2,
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Image.asset(
-                              'assets/images/logo.png',
-                              height: 50,
-                              width: 50,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  height: 50,
-                                  width: 50,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        const Color(AppConstants.primaryColor),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.lock_outline,
-                                    size: 30,
-                                    color: Colors.white,
-                                  ),
-                                );
-                              },
-                            ),
+                  // App Logo with white background
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(AppConstants.primaryColor)
+                              .withOpacity(0.15),
+                          spreadRadius: 3,
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Image.asset(
+                      AppConstants
+                          .logoPath, // Use your logo path from constants
+                      height: isTablet ? 80 : 60,
+                      width: isTablet ? 80 : 60,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: isTablet ? 80 : 60,
+                          width: isTablet ? 80 : 60,
+                          decoration: BoxDecoration(
+                            color: const Color(AppConstants.primaryColor),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-
-                          const SizedBox(height: 20),
-
-                          Text(
-                            AppConstants.appName,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(AppConstants.primaryColor),
-                                ),
-                            textAlign: TextAlign.center,
+                          child: Icon(
+                            Icons.lock_outline,
+                            size: isTablet ? 40 : 30,
+                            color: Colors.white,
                           ),
+                        );
+                      },
+                    ),
+                  ),
 
-                          const SizedBox(height: 32),
+                  SizedBox(height: isTablet ? 40 : 30),
 
-                          Text(
-                            'أدخل رمز PIN',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(AppConstants.primaryColor),
-                                ),
-                            textAlign: TextAlign.center,
-                          ),
+                  // App Name
+                  Text(
+                    AppConstants.appName,
+                    style: TextStyle(
+                      fontSize: isTablet ? 32 : 24,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(AppConstants.primaryColor),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
 
-                          const SizedBox(height: 12),
+                  SizedBox(height: isTablet ? 50 : 40),
 
-                          Text(
-                            'أدخل رمز PIN المكون من ${AppConstants.pinLength} أرقام للمتابعة',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
-                            textAlign: TextAlign.center,
-                          ),
+                  // PIN Title
+                  Text(
+                    'أدخل رمز PIN',
+                    style: TextStyle(
+                      fontSize: isTablet ? 24 : 20,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(AppConstants.primaryColor),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
 
-                          const SizedBox(height: 24),
+                  SizedBox(height: isTablet ? 20 : 15),
 
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: PinCodeTextField(
-                              key: _pinFieldKey,
-                              appContext: context,
-                              length: AppConstants.pinLength,
-                              onChanged: _onPinChanged,
-                              keyboardType: TextInputType.number,
-                              obscureText: true,
-                              obscuringCharacter: '●',
-                              animationType: AnimationType.fade,
-                              pinTheme: PinTheme(
-                                shape: PinCodeFieldShape.box,
-                                borderRadius: BorderRadius.circular(8),
-                                fieldHeight: 50,
-                                fieldWidth: 40,
-                                activeFillColor: Colors.white,
-                                inactiveFillColor:
-                                    const Color(AppConstants.surfaceColor),
-                                selectedFillColor: Colors.white,
-                                activeColor:
-                                    const Color(AppConstants.primaryColor),
-                                inactiveColor: Colors.grey[300],
-                                selectedColor:
-                                    const Color(AppConstants.primaryColor),
-                              ),
-                              enableActiveFill: true,
-                              autoFocus: true,
-                              showCursor: true,
-                              cursorColor:
-                                  const Color(AppConstants.primaryColor),
-                            ),
-                          ),
+                  // PIN Description
+                  Text(
+                    'أدخل رمز PIN المكون من ${AppConstants.pinLength} أرقام للمتابعة',
+                    style: TextStyle(
+                      fontSize: isTablet ? 18 : 16,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
 
-                          const SizedBox(height: 24),
+                  SizedBox(height: isTablet ? 40 : 30),
 
-                          if (_isLoading)
-                            const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(AppConstants.primaryColor)),
-                            ),
-
-                          const Expanded(flex: 2, child: SizedBox()),
-
-                          if (_attemptCount > 0)
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(AppConstants.accentColor)
-                                    .withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: const Color(AppConstants.accentColor)
-                                        .withOpacity(0.3)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.warning,
-                                    color:
-                                        const Color(AppConstants.accentColor),
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'المحاولات المتبقية: ${_maxAttempts - _attemptCount}',
-                                      style: TextStyle(
-                                        color: const Color(
-                                            AppConstants.accentColor),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                          const SizedBox(height: 16),
-                        ],
+                  // PIN Input Field - Responsive
+                  Container(
+                    width: double.infinity,
+                    constraints: BoxConstraints(
+                      maxWidth: isTablet ? 300 : 250,
+                    ),
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: PinCodeTextField(
+                        key: _pinFieldKey,
+                        appContext: context,
+                        length: AppConstants.pinLength,
+                        onChanged: _onPinChanged,
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        obscuringCharacter: '●',
+                        animationType: AnimationType.fade,
+                        pinTheme: PinTheme(
+                          shape: PinCodeFieldShape.box,
+                          borderRadius: BorderRadius.circular(12),
+                          fieldHeight: isTablet ? 70 : 60,
+                          fieldWidth: isTablet ? 60 : 50,
+                          activeFillColor: Colors.white,
+                          inactiveFillColor:
+                              const Color(AppConstants.surfaceColor),
+                          selectedFillColor: Colors.white,
+                          activeColor: const Color(AppConstants.primaryColor),
+                          inactiveColor: Colors.grey[300],
+                          selectedColor: const Color(AppConstants.primaryColor),
+                          borderWidth: 2,
+                        ),
+                        enableActiveFill: true,
+                        autoFocus: true,
+                        showCursor: true,
+                        cursorColor: const Color(AppConstants.primaryColor),
+                        textStyle: TextStyle(
+                          fontSize: isTablet ? 24 : 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
+
+                  SizedBox(height: isTablet ? 40 : 30),
+
+                  // Loading Indicator
+                  if (_isLoading)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      child: CircularProgressIndicator(
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(AppConstants.primaryColor)),
+                        strokeWidth: 3,
+                      ),
+                    ),
+
+                  SizedBox(height: isTablet ? 40 : 30),
+
+                  // Attempts Warning
+                  if (_attemptCount > 0)
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(isTablet ? 20 : 16),
+                      decoration: BoxDecoration(
+                        color: const Color(AppConstants.errorColor)
+                            .withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(AppConstants.errorColor)
+                              .withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.warning_rounded,
+                            color: const Color(AppConstants.errorColor),
+                            size: isTablet ? 24 : 20,
+                          ),
+                          SizedBox(width: isTablet ? 12 : 8),
+                          Flexible(
+                            child: Text(
+                              'المحاولات المتبقية: ${_maxAttempts - _attemptCount}',
+                              style: TextStyle(
+                                color: const Color(AppConstants.errorColor),
+                                fontWeight: FontWeight.w600,
+                                fontSize: isTablet ? 18 : 16,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Bottom spacing for tablets
+                  SizedBox(height: isTablet ? screenSize.height * 0.1 : 40),
+                ],
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );

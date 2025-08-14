@@ -1,6 +1,9 @@
 // lib/services/api_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:jala_as/models/aging_report.dart';
+import 'package:jala_as/models/area.dart';
+import 'package:jala_as/models/salesman.dart';
 import '../models/contact.dart';
 import '../models/account_statement.dart';
 
@@ -75,6 +78,179 @@ class ApiService {
 
     final rows = response['rows'] as List;
     return rows.map((row) => Contact.fromBisanJson(row)).toList();
+  }
+
+// Updated getAgingReport method to handle admin users with salesman range
+  static Future<List<AgingReport>> getAgingReport({
+    required String salesman,
+    String? area,
+    String? specificArea, // New parameter for admin area selection
+    String? salesmanFrom, // New parameter for admin salesman from
+    String? salesmanTo, // New parameter for admin salesman to
+  }) async {
+    // Get the last day of current month
+    final now = DateTime.now();
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+    final asOfDate =
+        '${lastDayOfMonth.year}-${lastDayOfMonth.month.toString().padLeft(2, '0')}-${lastDayOfMonth.day.toString().padLeft(2, '0')}';
+
+    String agingUrl;
+
+    // Check if user is admin (salesman=00 and area=00)
+    if (salesman == '00' && area == '00') {
+      // Get available salesmen for default values
+      final availableSalesmen = getAvailableSalesmen();
+      final firstSalesman = availableSalesmen.first.code; // "001"
+      final lastSalesman = availableSalesmen.last.code; // "835"
+
+      // Handle salesman range selection with auto-completion
+      String? finalSalesmanFrom = salesmanFrom;
+      String? finalSalesmanTo = salesmanTo;
+
+      // Auto-complete missing salesman values
+      if (salesmanFrom != null && salesmanTo == null) {
+        finalSalesmanTo = lastSalesman; // Use last salesman (835)
+      } else if (salesmanFrom == null && salesmanTo != null) {
+        finalSalesmanFrom = firstSalesman; // Use first salesman (001)
+      }
+
+      // Build URL based on provided parameters
+      if (finalSalesmanFrom != null && finalSalesmanTo != null) {
+        // Case 1 & 2: Salesman range with or without area
+        String baseUrl =
+            'https://gw.bisan.com/api/v2/jalaf/REPORT/aRAging?search=asOfDate:$asOfDate,groupType:دليل,fromContactType:001,toContactType:006,fromSalesman:$finalSalesmanFrom,toSalesman:$finalSalesmanTo';
+
+        // Add area if specified
+        if (specificArea != null && specificArea.isNotEmpty) {
+          baseUrl += ',area:$specificArea';
+        }
+
+        baseUrl +=
+            ',branch:00,numPeriods:3,daysPerPeriod:26,isCustomer:true,useContactSalesman:true,lg_status:مرحل';
+        agingUrl = baseUrl;
+      } else if (specificArea != null && specificArea.isNotEmpty) {
+        // Case 3: Area only
+        agingUrl =
+            'https://gw.bisan.com/api/v2/jalaf/REPORT/aRAging?search=asOfDate:$asOfDate,groupType:دليل,fromContactType:001,toContactType:006,area:$specificArea,branch:00,numPeriods:3,daysPerPeriod:26,isCustomer:true,useContactSalesman:true,lg_status:مرحل';
+      } else {
+        // No valid parameters provided, return empty list
+        return [];
+      }
+    } else {
+      // Regular user - use existing logic
+      if (area != null && area.isNotEmpty) {
+        agingUrl =
+            'https://gw.bisan.com/api/v2/jalaf/REPORT/aRAging?search=asOfDate:$asOfDate,groupType:دليل,fromContactType:001,toContactType:006,fromSalesman:$salesman,toSalesman:$salesman,area:$area,branch:00,numPeriods:3,daysPerPeriod:26,isCustomer:true,useContactSalesman:true,lg_status:مرحل';
+      } else {
+        agingUrl =
+            'https://gw.bisan.com/api/v2/jalaf/REPORT/aRAging?search=asOfDate:$asOfDate,groupType:دليل,fromContactType:001,toContactType:006,fromSalesman:$salesman,toSalesman:$salesman,branch:00,numPeriods:3,daysPerPeriod:26,isCustomer:true,useContactSalesman:true,lg_status:مرحل';
+      }
+    }
+
+    final response = await _makeApiRequest(
+      url: agingUrl,
+      method: 'GET',
+    );
+    print(agingUrl);
+
+    final rows = response['rows'] as List;
+    return rows.map((row) => AgingReport.fromJson(row)).toList();
+  }
+
+// New method to get available areas
+  static List<Area> getAvailableAreas() {
+    return [
+      Area(code: "008", name: "رام الله  -  فرع  الالبان"),
+      Area(code: "009", name: "رام الله - فرع الالبان 2"),
+      Area(code: "010", name: "مدينة الخليل"),
+      Area(code: "011", name: "قرى الخليل"),
+      Area(code: "012", name: "الخليل - مبرد"),
+      Area(code: "013", name: "قرى الخليل - مبرد"),
+      Area(code: "014", name: "العبيدية"),
+      Area(code: "015", name: "العبيدية - مبرد"),
+      Area(code: "016", name: "بيت لحم"),
+      Area(code: "017", name: "بيت لحم - مبرد"),
+      Area(code: "018", name: "بيت ساحور"),
+      Area(code: "019", name: "بيت ساحور - مبرد"),
+      Area(code: "020", name: "بيت جالا"),
+      Area(code: "021", name: "بيت جالا - مبرد"),
+      Area(code: "022", name: "شارع القدس الخليل"),
+      Area(code: "023", name: "شارع القدس الخليل - مبرد"),
+      Area(code: "024", name: "ابوديس، العيزرية"),
+      Area(code: "025", name: "ابوديس، العيزرية - مبرد"),
+      Area(code: "027", name: "قرى بيت لحم الشرقية - مبرد"),
+      Area(code: "029", name: "قرى بيت لحم الغربية - مبرد"),
+      Area(code: "030", name: "اريحا"),
+      Area(code: "035", name: "خط فؤاد غنيم"),
+      Area(code: "048", name: "مطاعم بيت لحم M"),
+      Area(code: "049", name: "مطاعم بيت لحم J"),
+      Area(code: "050", name: "رام الله"),
+      Area(code: "051", name: "رام الله - مبرد"),
+      Area(code: "052", name: "قرى رام الله - مبرد"),
+      Area(code: "053", name: "قرى رام الله"),
+      Area(code: "054", name: "عناتا، حزما ،الرام"),
+      Area(code: "055", name: "عناتا، حزما ،الرام - مبرد"),
+      Area(code: "056", name: "اريحا - مبرد"),
+      Area(code: "059", name: "نابلس"),
+      Area(code: "060", name: "طولكرم"),
+      Area(code: "070", name: "قلقيلية"),
+      Area(code: "080", name: "جنين"),
+      Area(code: "090", name: "القدس عيدن"),
+      Area(code: "100", name: "القدس"),
+      Area(code: "997", name: "عالق"),
+      Area(code: "998", name: "قضايا"),
+      Area(code: "999", name: "موظفين"),
+    ];
+  }
+
+// Updated methods for lib/services/api_service.dart
+
+  // Add this new method to get available salesmen
+  static List<Salesman> getAvailableSalesmen() {
+    return [
+      Salesman(code: "001", name: "سليمان فؤاد سليمان دياب"),
+      Salesman(code: "002", name: "معتز خالد ابراهيم الحموري"),
+      Salesman(code: "003", name: "فراس منير فتحي سليمان"),
+      Salesman(code: "005", name: "محمد عطية عبد  عطيه"),
+      Salesman(code: "007", name: "شركة جالا فود"),
+      Salesman(code: "015", name: "مايك الياس باسيل غنيم"),
+      Salesman(code: "030", name: "جوني خالد باسيل المصو"),
+      Salesman(code: "031", name: "احمد علي حسن عكيله"),
+      Salesman(code: "045", name: "اسماعيل يعقوب احمد الهودلي"),
+      Salesman(code: "046", name: "فؤاد سهيل فؤاد غنيم"),
+      Salesman(code: "047", name: "مهند زياد عبد الحميد العيسه"),
+      Salesman(code: "048", name: "اياد عزيز سليمان عبد"),
+      Salesman(code: "050", name: "ايليا ماهر  ابراهيم  زيدان"),
+      Salesman(code: "051", name: "نائل محمد علي صبيح"),
+      Salesman(code: "052", name: "مندوب خط البان 2"),
+      Salesman(code: "099", name: "اسبير بيتر اسبير جهشان"),
+      Salesman(code: "500", name: "طوني حنا سليمان الزعمط"),
+      Salesman(code: "505", name: "قصي محمد عيد حميده"),
+      Salesman(code: "800", name: "المحامي وجدي العلم"),
+      Salesman(code: "801", name: "المحامي رائد اعميا"),
+      Salesman(code: "802", name: "المحامي مجدي الصليبي."),
+      Salesman(code: "803", name: "شركة بيت المقدس للمحاماة والدراسات"),
+      Salesman(code: "804", name: "قضايا منتهية"),
+      Salesman(code: "808", name: "المحامي غسان لطفي الياس دبابنة"),
+      Salesman(code: "810", name: "المحامي بسيم عصفور"),
+      Salesman(code: "811", name: "الياس جورج الياس  ابو سعدة"),
+      Salesman(code: "812", name: "معاذ ابراهيم موسى المصري"),
+      Salesman(code: "813", name: "كمال محسن كامل نزال"),
+      Salesman(code: "814", name: "علي علقم"),
+      Salesman(code: "815", name: "عبدالله جواد صبحي غانم"),
+      Salesman(code: "816", name: "ابراهيم كسابري"),
+      Salesman(code: "817", name: "حماده عيسى محمود الكردي"),
+      Salesman(code: "818", name: "محمد حسن علي جبريني"),
+      Salesman(code: "819", name: "كمال محسن كامل نزال"),
+      Salesman(code: "820", name: "علي علقم"),
+      Salesman(code: "821", name: "سمير احمد عبد عوض الله"),
+      Salesman(code: "822", name: "رامي سامي محمد ابو عمر"),
+      Salesman(code: "823", name: "نقولا فرح ابو غنام"),
+      Salesman(code: "824", name: "محمد علي صالح كنعان"),
+      Salesman(code: "825", name: "مندوب الخدمات"),
+      Salesman(code: "830", name: "ايهاب نبيل محمود سمارة"),
+      Salesman(code: "835", name: "بلال عبد السلام يحيى جابر"),
+    ];
   }
 
   static Future<List<AccountStatement>> getAccountStatements({

@@ -1,10 +1,15 @@
 // lib/screens/web/web_date_selection_screen.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../models/user.dart';
 import '../../models/contact.dart';
 import '../../utils/helpers.dart';
+import '../../utils/constants.dart';
 import '../../utils/arabic_text_helper.dart';
+import '../../services/supabase_service.dart';
 import 'web_account_statements_screen.dart';
+import 'web_login_screen.dart';
+import 'dart:ui' as ui;
 
 class DateSelectionScreen extends StatefulWidget {
   final AppUser user;
@@ -25,37 +30,34 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
   DateTime? _toDate;
   String _selectedPeriod = '';
   bool _isLoadingStatements = false;
+  final _dateFormat = DateFormat('yyyy-MM-dd');
+  final _displayDateFormat = DateFormat('dd/MM/yyyy');
 
   final List<DatePeriod> _predefinedPeriods = [
     DatePeriod(
       id: 'today',
       title: 'اليوم',
       icon: Icons.today,
-      color: Colors.green,
     ),
     DatePeriod(
       id: 'this_week',
       title: 'هذا الأسبوع',
       icon: Icons.view_week,
-      color: Colors.blue,
     ),
     DatePeriod(
       id: 'this_month',
       title: 'هذا الشهر',
       icon: Icons.calendar_view_month,
-      color: Colors.orange,
     ),
     DatePeriod(
       id: 'this_quarter',
       title: 'هذا الربع',
       icon: Icons.calendar_view_day,
-      color: Colors.purple,
     ),
     DatePeriod(
       id: 'this_year',
       title: 'هذه السنة',
       icon: Icons.calendar_today,
-      color: Colors.teal,
     ),
   ];
 
@@ -115,6 +117,7 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
           _fromDate = picked;
           if (_toDate != null && _toDate!.isBefore(picked)) {
             _toDate = picked;
+            _showDateAdjustmentWarning();
           }
         } else {
           _toDate = picked;
@@ -122,6 +125,14 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
         _selectedPeriod = ''; // Clear selected period when manually editing
       });
     }
+  }
+
+  void _showDateAdjustmentWarning() {
+    Helpers.showSnackBar(
+      context,
+      'تأكد من أن تاريخ النهاية بعد تاريخ البداية',
+      isError: false,
+    );
   }
 
   Future<void> _loadStatements() async {
@@ -134,258 +145,429 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
       return;
     }
 
+    if (_toDate!.isBefore(_fromDate!)) {
+      Helpers.showSnackBar(
+        context,
+        'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() {
       _isLoadingStatements = true;
     });
 
-    // Navigate to results screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => WebAccountStatementsScreen(
-          user: widget.user,
-          contact: widget.contact,
-          fromDate: _fromDate!,
-          toDate: _toDate!,
+    try {
+// Navigate to results screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => WebAccountStatementsScreen(
+            user: widget.user,
+            contact: widget.contact,
+            fromDate:
+                _dateFormat.format(_fromDate!), // Convert DateTime to String
+            toDate: _dateFormat.format(_toDate!), // Convert DateTime to String
+          ),
         ),
-      ),
-    ).then((_) {
-      // Reset loading state when returning
+      );
+    } finally {
       if (mounted) {
         setState(() {
           _isLoadingStatements = false;
         });
       }
-    });
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'تسجيل الخروج',
+            style: TextStyle(
+              color: Color(AppConstants.primaryColor),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text('هل تريد تسجيل الخروج؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text(
+                'إلغاء',
+                style: TextStyle(color: Color(AppConstants.primaryColor)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppConstants.accentColor),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'تسجيل الخروج',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await SupabaseService.signOut();
+        await Helpers.setLoggedIn(false);
+        await Helpers.clearUserData();
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const WebLoginScreen(),
+            ),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          Helpers.showSnackBar(
+            context,
+            'فشل في تسجيل الخروج',
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  String _getGreetingMessage() {
+    final hour = DateTime.now().hour;
+
+    if (hour >= 5 && hour < 12) {
+      return 'صباح الخير ☀️';
+    } else if (hour >= 12 && hour < 17) {
+      return 'مساء الخير 🌤️';
+    } else {
+      return 'مساء الخير 🌙';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
     final isDesktop = screenWidth > 900;
-    final isTablet = screenWidth > 600 && screenWidth <= 900;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          isDesktop
-              ? 'كشف حساب - ${ArabicTextHelper.cleanText(widget.contact.nameAr)}'
-              : 'كشف الحساب',
-          overflow: TextOverflow.ellipsis,
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: _WebDateAppBar(
+          user: widget.user,
+          contact: widget.contact,
+          onLogout: _logout,
+          greeting: _getGreetingMessage(),
         ),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (isDesktop) {
-            return _buildDesktopLayout(constraints);
-          } else {
-            return _buildMobileLayout(constraints);
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildDesktopLayout(BoxConstraints constraints) {
-    return Center(
-      child: SizedBox(
-        width: 500,
-        height: constraints.maxHeight,
-        child: _buildDateSelectionPanel(true, constraints.maxHeight),
-      ),
-    );
-  }
-
-  Widget _buildMobileLayout(BoxConstraints constraints) {
-    return _buildDateSelectionPanel(false, constraints.maxHeight);
-  }
-
-  Widget _buildDateSelectionPanel(bool isDesktop, double maxHeight) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade200),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Contact Info Header - Fixed height
-          Container(
-            padding: EdgeInsets.all(isDesktop ? 16 : 12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
-              ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isDesktop ? 800 : double.infinity,
             ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: isDesktop ? 24 : 20,
-                  backgroundColor: Colors.blue.shade100,
-                  child: Text(
-                    widget.contact.nameAr.isNotEmpty
-                        ? widget.contact.nameAr[0]
-                        : '؟',
-                    style: TextStyle(
-                      fontSize: isDesktop ? 16 : 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
-                    ),
-                  ),
-                ),
-                SizedBox(width: isDesktop ? 12 : 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        ArabicTextHelper.cleanText(widget.contact.nameAr),
-                        style: TextStyle(
-                          fontSize: isDesktop ? 16 : 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'رقم العميل: ${widget.contact.code}',
-                        style: TextStyle(
-                          fontSize: isDesktop ? 12 : 10,
-                          color: Colors.grey.shade600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Scrollable Content
-          Expanded(
             child: SingleChildScrollView(
-              padding: EdgeInsets.all(isDesktop ? 16 : 12),
+              padding: EdgeInsets.all(isDesktop ? 32 : 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title
-                  Text(
-                    'اختر الفترة الزمنية',
-                    style: TextStyle(
-                      fontSize: isDesktop ? 18 : 16,
-                      fontWeight: FontWeight.bold,
+                  // Enhanced Contact Info Card
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(isDesktop ? 12 : 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(height: isDesktop ? 16 : 12),
-
-                  // Quick Selection Buttons
-                  Text(
-                    'اختيار سريع:',
-                    style: TextStyle(
-                      fontSize: isDesktop ? 14 : 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _predefinedPeriods.map((period) {
-                      final isSelected = _selectedPeriod == period.id;
-                      return InkWell(
-                        onTap: () => _selectPredefinedPeriod(period.id),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isDesktop ? 12 : 10,
-                            vertical: isDesktop ? 8 : 6,
-                          ),
+                    child: Row(
+                      children: [
+                        // Contact Avatar
+                        Container(
+                          width: isDesktop ? 70 : 60,
+                          height: isDesktop ? 70 : 60,
                           decoration: BoxDecoration(
-                            color: isSelected
-                                ? period.color.shade100
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected
-                                  ? period.color
-                                  : Colors.grey.shade300,
-                              width: isSelected ? 2 : 1,
+                            color: const Color(AppConstants.accentColor),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(AppConstants.accentColor)
+                                    .withOpacity(0.3),
+                                blurRadius: 8,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              widget.contact.nameAr.isNotEmpty
+                                  ? widget.contact.nameAr[0]
+                                  : 'ع',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: isDesktop ? 22 : 19,
+                              ),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        ),
+
+                        SizedBox(width: isDesktop ? 20 : 16),
+
+                        // Contact Details
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                period.icon,
-                                size: isDesktop ? 16 : 14,
-                                color: isSelected
-                                    ? period.color
-                                    : Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 4),
                               Text(
-                                period.title,
+                                'العميل المحدد',
                                 style: TextStyle(
-                                  fontSize: isDesktop ? 12 : 10,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  color: isSelected
-                                      ? period.color
-                                      : Colors.grey.shade700,
+                                  fontSize: isDesktop ? 12 : 11,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
                                 ),
+                              ),
+                              SizedBox(height: isDesktop ? 6 : 4),
+                              Text(
+                                ArabicTextHelper.cleanText(
+                                    widget.contact.nameAr),
+                                style: TextStyle(
+                                  fontSize: isDesktop ? 15 : 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(AppConstants.primaryColor),
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: isDesktop ? 10 : 8),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isDesktop ? 10 : 8,
+                                      vertical: isDesktop ? 6 : 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          const Color(AppConstants.accentColor)
+                                              .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '#',
+                                      style: TextStyle(
+                                        fontSize: isDesktop ? 12 : 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(
+                                            AppConstants.accentColor),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: isDesktop ? 10 : 8),
+                                  Text(
+                                    widget.contact.code,
+                                    style: TextStyle(
+                                      fontSize: isDesktop ? 13 : 11,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          const Color(AppConstants.accentColor),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                      );
-                    }).toList(),
+
+                        // Status indicator
+                        Container(
+                          padding: EdgeInsets.all(isDesktop ? 12 : 10),
+                          decoration: BoxDecoration(
+                            color: const Color(AppConstants.primaryColor)
+                                .withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.check_circle,
+                            color: const Color(AppConstants.primaryColor),
+                            size: isDesktop ? 24 : 20,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
 
                   SizedBox(height: isDesktop ? 20 : 16),
 
-                  // Date Input Fields - Always Visible
+                  // Quick Date Selection Section
                   Text(
-                    'تخصيص التواريخ:',
+                    'اختيار سريع للفترة',
                     style: TextStyle(
-                      fontSize: isDesktop ? 14 : 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
+                      fontSize: isDesktop ? 15 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(AppConstants.primaryColor),
                     ),
                   ),
-                  const SizedBox(height: 8),
 
-                  // From and To Date Fields
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildDateField(
-                            'من تاريخ', _fromDate, true, isDesktop),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildDateField(
-                            'إلى تاريخ', _toDate, false, isDesktop),
-                      ),
-                    ],
+                  SizedBox(height: isDesktop ? 8 : 6),
+
+                  Text(
+                    'اختر فترة زمنية محددة مسبقاً',
+                    style: TextStyle(
+                      fontSize: isDesktop ? 14 : 12,
+                      color: Colors.grey[600],
+                    ),
                   ),
 
-                  SizedBox(height: isDesktop ? 16 : 12),
+                  SizedBox(height: isDesktop ? 20 : 16),
 
-                  // Load Button
-                  SizedBox(
+                  // Quick date chips in a better layout
+                  Container(
+                    padding: EdgeInsets.all(isDesktop ? 15 : 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: Wrap(
+                      spacing: isDesktop ? 12 : 10,
+                      runSpacing: isDesktop ? 12 : 10,
+                      children: _predefinedPeriods.map((period) {
+                        final isSelected = _selectedPeriod == period.id;
+                        return _QuickDateChip(
+                          label: period.title,
+                          icon: period.icon,
+                          isSelected: isSelected,
+                          isDesktop: isDesktop,
+                          onTap: () => _selectPredefinedPeriod(period.id),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+
+                  SizedBox(height: isDesktop ? 40 : 32),
+
+                  // Custom Date Selection Section
+                  Text(
+                    'اختيار مخصص للتواريخ',
+                    style: TextStyle(
+                      fontSize: isDesktop ? 15 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(AppConstants.primaryColor),
+                    ),
+                  ),
+
+                  SizedBox(height: isDesktop ? 8 : 6),
+
+                  Text(
+                    'حدد تاريخ البداية والنهاية يدوياً',
+                    style: TextStyle(
+                      fontSize: isDesktop ? 14 : 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+
+                  SizedBox(height: isDesktop ? 20 : 16),
+
+                  // Date selection cards
+                  Container(
+                    padding: EdgeInsets.all(isDesktop ? 20 : 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        // From Date
+                        _buildDateSelector(
+                          title: 'تاريخ البداية',
+                          date: _fromDate,
+                          icon: Icons.event,
+                          color: const Color(AppConstants.accentColor),
+                          isDesktop: isDesktop,
+                          onTap: () => _selectCustomDate(true),
+                        ),
+
+                        SizedBox(height: isDesktop ? 16 : 12),
+
+                        // To Date
+                        _buildDateSelector(
+                          title: 'تاريخ النهاية',
+                          date: _toDate,
+                          icon: Icons.event_available,
+                          color: const Color(AppConstants.primaryColor),
+                          isDesktop: isDesktop,
+                          onTap: () => _selectCustomDate(false),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: isDesktop ? 40 : 32),
+
+                  // Enhanced Proceed Button
+                  Container(
                     width: double.infinity,
+                    height: isDesktop ? 60 : 56,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: (_fromDate != null &&
+                              _toDate != null &&
+                              !_isLoadingStatements)
+                          ? [
+                              BoxShadow(
+                                color: const Color(AppConstants.accentColor)
+                                    .withOpacity(0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : null,
+                    ),
                     child: ElevatedButton(
                       onPressed: (_fromDate != null &&
                               _toDate != null &&
@@ -393,42 +575,301 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
                           ? _loadStatements
                           : null,
                       style: ElevatedButton.styleFrom(
-                        padding:
-                            EdgeInsets.symmetric(vertical: isDesktop ? 14 : 12),
+                        backgroundColor: const Color(AppConstants.accentColor),
+                        disabledBackgroundColor: Colors.grey[300],
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(16),
                         ),
+                        elevation: 0,
                       ),
                       child: _isLoadingStatements
                           ? Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 SizedBox(
-                                  width: 16,
-                                  height: 16,
+                                  width: 20,
+                                  height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                         Colors.white),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 12),
                                 Text(
                                   'جاري التحميل...',
-                                  style:
-                                      TextStyle(fontSize: isDesktop ? 14 : 12),
+                                  style: TextStyle(
+                                    fontSize: isDesktop ? 16 : 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             )
-                          : Text(
-                              'عرض كشف الحساب',
-                              style: TextStyle(fontSize: isDesktop ? 14 : 12),
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.analytics,
+                                  size: isDesktop ? 22 : 20,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'عرض كشف الحساب',
+                                  style: TextStyle(
+                                    fontSize: isDesktop ? 16 : 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
+                    ),
+                  ),
+
+                  SizedBox(height: isDesktop ? 32 : 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateSelector({
+    required String title,
+    required DateTime? date,
+    required IconData icon,
+    required Color color,
+    required bool isDesktop,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(isDesktop ? 14 : 12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: color.withOpacity(0.2),
+            width: 1.5,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          color: color.withOpacity(0.02),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(isDesktop ? 10 : 8),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: isDesktop ? 22 : 20,
+              ),
+            ),
+            SizedBox(width: isDesktop ? 18 : 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: isDesktop ? 12 : 10,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: isDesktop ? 6 : 4),
+                  Text(
+                    date != null
+                        ? _displayDateFormat.format(date)
+                        : 'اختر التاريخ',
+                    style: TextStyle(
+                      fontSize: isDesktop ? 14 : 13,
+                      fontWeight: FontWeight.w600,
+                      color: date != null
+                          ? const Color(AppConstants.primaryColor)
+                          : Colors.grey[500],
                     ),
                   ),
                 ],
               ),
+            ),
+            Icon(
+              Icons.arrow_back_ios,
+              size: isDesktop ? 18 : 16,
+              color: color,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WebDateAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final AppUser user;
+  final Contact contact;
+  final VoidCallback onLogout;
+  final String greeting;
+
+  const _WebDateAppBar({
+    required this.user,
+    required this.contact,
+    required this.onLogout,
+    required this.greeting,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 900;
+
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: AppBar(
+        elevation: 4,
+        backgroundColor: const Color(AppConstants.primaryColor),
+        toolbarHeight: kToolbarHeight,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Padding(
+          padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 8),
+          child: Row(
+            children: [
+              // Logo with white background
+              Container(
+                padding: EdgeInsets.all(isDesktop ? 8 : 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Image.asset(
+                  AppConstants.logoPath,
+                  width: isDesktop ? 32 : 28,
+                  height: isDesktop ? 32 : 28,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: isDesktop ? 32 : 28,
+                      height: isDesktop ? 32 : 28,
+                      decoration: BoxDecoration(
+                        color: const Color(AppConstants.accentColor),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        Icons.account_balance,
+                        size: isDesktop ? 18 : 16,
+                        color: Colors.white,
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              SizedBox(width: isDesktop ? 16 : 12),
+
+              // Title
+              Expanded(
+                child: Text(
+                  isDesktop
+                      ? 'كشف حساب - ${ArabicTextHelper.cleanText(contact.nameAr)}'
+                      : 'كشف الحساب',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // User info for desktop
+              if (isDesktop) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.person,
+                        size: 16,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        user.username,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          Padding(
+            padding: EdgeInsets.only(left: isDesktop ? 16 : 12),
+            child: PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'logout') {
+                  onLogout();
+                }
+              },
+              icon: const Icon(
+                Icons.more_vert,
+                color: Colors.white,
+                size: 20,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'logout',
+                  child: Directionality(
+                    textDirection: ui.TextDirection.rtl,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.logout,
+                          color: const Color(AppConstants.errorColor),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'تسجيل الخروج',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -436,58 +877,80 @@ class _DateSelectionScreenState extends State<DateSelectionScreen> {
     );
   }
 
-  Widget _buildDateField(
-      String label, DateTime? date, bool isFromDate, bool isDesktop) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isDesktop ? 12 : 10,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey.shade700,
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+}
+
+class _QuickDateChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final bool isDesktop;
+  final VoidCallback onTap;
+
+  const _QuickDateChip({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.isDesktop,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(25),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 14 : 12,
+            vertical: isDesktop ? 10 : 8,
           ),
-        ),
-        const SizedBox(height: 4),
-        InkWell(
-          onTap: () => _selectCustomDate(isFromDate),
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: isDesktop ? 12 : 10,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    date != null
-                        ? Helpers.formatDisplayDate(date)
-                        : 'اختر التاريخ',
-                    style: TextStyle(
-                      fontSize: isDesktop ? 12 : 11,
-                      color:
-                          date != null ? Colors.black87 : Colors.grey.shade500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+          decoration: BoxDecoration(
+            gradient: isSelected
+                ? LinearGradient(
+                    colors: [
+                      const Color(AppConstants.accentColor).withOpacity(0.2),
+                      const Color(AppConstants.accentColor).withOpacity(0.1),
+                    ],
+                  )
+                : LinearGradient(
+                    colors: [
+                      const Color(AppConstants.accentColor).withOpacity(0.05),
+                      const Color(AppConstants.accentColor).withOpacity(0.02),
+                    ],
                   ),
-                ),
-                Icon(
-                  Icons.calendar_today,
-                  size: isDesktop ? 16 : 14,
-                  color: Colors.grey.shade600,
-                ),
-              ],
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(AppConstants.accentColor)
+                  : const Color(AppConstants.accentColor).withOpacity(0.3),
+              width: isSelected ? 2 : 1,
             ),
           ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: isDesktop ? 15 : 13,
+                color: const Color(AppConstants.accentColor),
+              ),
+              SizedBox(width: isDesktop ? 8 : 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: const Color(AppConstants.accentColor),
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: isDesktop ? 13 : 12,
+                ),
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -496,12 +959,10 @@ class DatePeriod {
   final String id;
   final String title;
   final IconData icon;
-  final MaterialColor color;
 
   DatePeriod({
     required this.id,
     required this.title,
     required this.icon,
-    required this.color,
   });
 }

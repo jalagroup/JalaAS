@@ -6,10 +6,10 @@ import 'package:jala_as/screens/mobile/mobile_login_screen.dart';
 import 'package:jala_as/screens/mobile/no_internet_screen.dart';
 import 'package:jala_as/screens/mobile/pin_enter_screen.dart';
 import 'package:jala_as/screens/mobile/pin_setup_screen.dart';
+import 'package:jala_as/screens/mobile/welcome_screen.dart';
 import 'package:jala_as/services/supabase_service.dart';
 import 'package:jala_as/utils/constants.dart';
 import 'package:jala_as/utils/helpers.dart';
-
 
 class MobileApp extends StatelessWidget {
   const MobileApp({super.key});
@@ -266,7 +266,8 @@ class _AppInitializerState extends State<AppInitializer>
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => const ContactSelectionScreen(),
+        builder: (context) =>
+            const WelcomeScreen(), // Changed from ContactSelectionScreen to WelcomeScreen
       ),
     );
   }

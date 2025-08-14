@@ -1,8 +1,41 @@
-// lib/web/web_main.dart - Web Entry Point
+// lib/screens/web/web_main.dart - Web Entry Point
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'web_login_screen.dart';
 import '../../utils/constants.dart';
+import '../../services/supabase_service.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await SupabaseService.initialize();
+    runApp(const WebApp());
+  } catch (e) {
+    print('Failed to initialize Supabase: $e');
+    runApp(const ErrorApp());
+  }
+}
+
+class ErrorApp extends StatelessWidget {
+  const ErrorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Error',
+      home: Scaffold(
+        body: const Center(
+          child: Text(
+            'Failed to initialize the application. Please check your internet connection and try again.',
+            style: TextStyle(fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class WebApp extends StatelessWidget {
   const WebApp({super.key});

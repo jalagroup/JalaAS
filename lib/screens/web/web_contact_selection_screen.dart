@@ -4,6 +4,7 @@ import '../../models/user.dart';
 import '../../models/contact.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/helpers.dart';
+import '../../utils/constants.dart';
 import '../../utils/arabic_text_helper.dart';
 import 'web_date_selection_screen.dart';
 import 'web_login_screen.dart';
@@ -63,37 +64,50 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
 
   Future<void> _loadContacts() async {
     try {
+      setState(() {
+        _isLoading = true;
+      });
+
       List<Contact> contacts;
       if (widget.user.isAdmin) {
         contacts = await SupabaseService.getContacts();
       } else {
+        print('----------------------s');
+        print(widget.user.salesman);
+        print('----------------------a');
+        print(widget.user.area);
+
         contacts = await SupabaseService.getUserContacts(
           salesman: widget.user.salesman,
           area: widget.user.area,
         );
       }
 
-      setState(() {
-        _allContacts = contacts;
-        _filteredContacts = contacts;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _allContacts = contacts;
+          _filteredContacts = contacts;
+          _isLoading = false;
+        });
 
-      if (contacts.isNotEmpty) {
-        Helpers.showSnackBar(
-          context,
-          'تم تحميل ${contacts.length} عميل بنجاح',
-        );
+        if (contacts.isNotEmpty) {
+          Helpers.showSnackBar(
+            context,
+            'تم تحميل ${contacts.length} عميل بنجاح',
+          );
+        }
       }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      Helpers.showSnackBar(
-        context,
-        'فشل في تحميل قائمة العملاء: ${e.toString()}',
-        isError: true,
-      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        Helpers.showSnackBar(
+          context,
+          'فشل في تحميل قائمة العملاء: ${e.toString()}',
+          isError: true,
+        );
+      }
     }
   }
 
@@ -112,25 +126,57 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تسجيل الخروج'),
-        content: const Text('هل تريد تسجيل الخروج؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('إلغاء'),
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تسجيل الخروج'),
+          title: const Text(
+            'تسجيل الخروج',
+            style: TextStyle(
+              color: Color(AppConstants.primaryColor),
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ],
+          content: const Text('هل تريد تسجيل الخروج؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text(
+                'إلغاء',
+                style: TextStyle(color: Color(AppConstants.primaryColor)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppConstants.accentColor),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'تسجيل الخروج',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
     if (confirmed == true) {
       try {
         await SupabaseService.signOut();
+        await Helpers.setLoggedIn(false);
+        await Helpers.clearUserData();
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
@@ -139,11 +185,13 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
           );
         }
       } catch (e) {
-        Helpers.showSnackBar(
-          context,
-          'فشل في تسجيل الخروج',
-          isError: true,
-        );
+        if (mounted) {
+          Helpers.showSnackBar(
+            context,
+            'فشل في تسجيل الخروج',
+            isError: true,
+          );
+        }
       }
     }
   }
@@ -152,7 +200,20 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     if (screenWidth < 600) return 1; // Mobile
     if (screenWidth < 900) return 2; // Tablet
     if (screenWidth < 1200) return 3; // Small desktop
-    return 4; // Large desktop
+    if (screenWidth < 1600) return 4; // Medium desktop
+    return 5; // Large desktop
+  }
+
+  String _getGreetingMessage() {
+    final hour = DateTime.now().hour;
+
+    if (hour >= 5 && hour < 12) {
+      return 'صباح الخير ☀️';
+    } else if (hour >= 12 && hour < 17) {
+      return 'مساء الخير 🌤️';
+    } else {
+      return 'مساء الخير 🌙';
+    }
   }
 
   @override
@@ -160,186 +221,506 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 900;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('اختيار العميل'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Center(
-              child: Text(
-                'مرحباً، ${widget.user.username}',
-                style: const TextStyle(fontSize: 16),
-              ),
-            ),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'logout') {
-                _logout();
-              } else if (value == 'refresh') {
-                _loadContacts();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'refresh',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh),
-                    SizedBox(width: 8),
-                    Text('تحديث'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text('تسجيل الخروج'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Search Header
-          Container(
-            padding: EdgeInsets.all(isDesktop ? 24 : 16),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
-              ),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: _WebAppBar(
+          user: widget.user,
+          onLogout: _logout,
+          onRefresh: _loadContacts,
+          greeting: _getGreetingMessage(),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isDesktop ? 1400 : double.infinity,
             ),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.people, color: Colors.blue.shade600),
-                    const SizedBox(width: 8),
-                    Text(
-                      'العملاء',
-                      style: TextStyle(
-                        fontSize: isDesktop ? 24 : 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade800,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_isLoading)
-                      const CircularProgressIndicator()
-                    else
+                const SizedBox(height: 16),
+
+                // Enhanced Search Section
+                Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 20),
+                  child: Column(
+                    children: [
+                      // Search Field
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(20),
+                        constraints: BoxConstraints(
+                          maxWidth: isDesktop ? 800 : double.infinity,
                         ),
-                        child: Text(
-                          'العدد: ${_filteredContacts.length}',
-                          style: TextStyle(
-                            color: Colors.blue.shade800,
-                            fontWeight: FontWeight.bold,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 0),
+                            ),
+                          ],
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          textDirection: TextDirection.rtl,
+                          decoration: InputDecoration(
+                            labelText: 'البحث عن عميل',
+                            hintText: 'ادخل اسم العميل أو رقمه',
+                            hintTextDirection: TextDirection.rtl,
+                            prefixIcon: Container(
+                              margin: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(AppConstants.accentColor),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.search,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      color: Color(AppConstants.primaryColor),
+                                    ),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                    },
+                                  )
+                                : null,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: Color(AppConstants.accentColor),
+                                width: 2,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: isDesktop ? 20 : 16,
+                              vertical: isDesktop ? 14 : 12,
+                            ),
                           ),
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Search Bar
-                Container(
-                  constraints: BoxConstraints(
-                    maxWidth: isDesktop ? 600 : double.infinity,
+
+                      const SizedBox(height: 16),
+
+                      // Contact count badge
+                      if (_filteredContacts.isNotEmpty) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isDesktop ? 20 : 16,
+                                vertical: isDesktop ? 10 : 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(AppConstants.accentColor)
+                                    .withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(25),
+                                border: Border.all(
+                                  color: const Color(AppConstants.accentColor)
+                                      .withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.people,
+                                    size: isDesktop ? 18 : 16,
+                                    color:
+                                        const Color(AppConstants.accentColor),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${_filteredContacts.length} عميل',
+                                    style: TextStyle(
+                                      color:
+                                          const Color(AppConstants.accentColor),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: isDesktop ? 14 : 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ],
                   ),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'ابحث عن عميل بالاسم أو الرقم...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
+                ),
+
+                // Content
+                Expanded(
+                  child: _isLoading
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: EdgeInsets.all(isDesktop ? 32 : 24),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                      offset: const Offset(0, 0),
+                                    ),
+                                  ],
+                                ),
+                                child: const CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(AppConstants.accentColor)),
+                                  strokeWidth: 3,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'جاري تحميل العملاء...',
+                                style: TextStyle(
+                                  color: const Color(AppConstants.primaryColor),
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: isDesktop ? 18 : 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _filteredContacts.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding:
+                                        EdgeInsets.all(isDesktop ? 40 : 32),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.06),
+                                          blurRadius: 20,
+                                          spreadRadius: 2,
+                                          offset: const Offset(0, 0),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      Icons.people_outline,
+                                      size: isDesktop ? 100 : 80,
+                                      color: Colors.grey[300],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    _allContacts.isEmpty
+                                        ? 'لا توجد عملاء'
+                                        : 'لا توجد نتائج للبحث',
+                                    style: TextStyle(
+                                      fontSize: isDesktop ? 24 : 20,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _allContacts.isEmpty
+                                        ? 'لم يتم العثور على أي عملاء في النظام'
+                                        : 'جرب البحث بكلمات مختلفة',
+                                    style: TextStyle(
+                                      fontSize: isDesktop ? 16 : 14,
+                                      color: Colors.grey[500],
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  if (_allContacts.isEmpty) ...[
+                                    const SizedBox(height: 24),
+                                    ElevatedButton(
+                                      onPressed: _loadContacts,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                            AppConstants.accentColor),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: isDesktop ? 40 : 32,
+                                          vertical: isDesktop ? 16 : 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(25),
+                                        ),
+                                        elevation: 0,
+                                      ),
+                                      child: Text(
+                                        'إعادة التحميل',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: isDesktop ? 16 : 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
+                          : Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isDesktop ? 32 : 20,
+                                vertical: 8,
+                              ),
+                              child: GridView.builder(
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount:
+                                      _getCrossAxisCount(screenWidth),
+                                  crossAxisSpacing: isDesktop ? 16 : 12,
+                                  mainAxisSpacing: isDesktop ? 16 : 12,
+                                  childAspectRatio: isDesktop ? 2.8 : 3.5,
+                                ),
+                                itemCount: _filteredContacts.length,
+                                itemBuilder: (context, index) {
+                                  final contact = _filteredContacts[index];
+                                  return _ContactCard(
+                                    contact: contact,
+                                    onTap: () => _selectContact(contact),
+                                    isDesktop: isDesktop,
+                                  );
+                                },
+                              ),
+                            ),
+                ),
+
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WebAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final AppUser user;
+  final VoidCallback onLogout;
+  final VoidCallback onRefresh;
+  final String greeting;
+
+  const _WebAppBar({
+    required this.user,
+    required this.onLogout,
+    required this.onRefresh,
+    required this.greeting,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 900;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AppBar(
+        elevation: 4,
+        backgroundColor: const Color(AppConstants.primaryColor),
+        automaticallyImplyLeading: false,
+        toolbarHeight: kToolbarHeight,
+        title: Padding(
+          padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 8),
+          child: Row(
+            children: [
+              // Back Button
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                  ),
+                  iconSize: isDesktop ? 24 : 22,
+                  tooltip: 'العودة للرئيسية',
+                ),
+              ),
+
+              SizedBox(width: isDesktop ? 12 : 8),
+
+              // Logo with white background
+              Container(
+                padding: EdgeInsets.all(isDesktop ? 8 : 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Image.asset(
+                  AppConstants.logoPath,
+                  width: isDesktop ? 32 : 28,
+                  height: isDesktop ? 32 : 28,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: isDesktop ? 32 : 28,
+                      height: isDesktop ? 32 : 28,
+                      decoration: BoxDecoration(
+                        color: const Color(AppConstants.accentColor),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 20),
+                      child: Icon(
+                        Icons.account_balance,
+                        size: isDesktop ? 18 : 16,
+                        color: Colors.white,
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              SizedBox(width: isDesktop ? 16 : 12),
+
+              // Title
+              const Expanded(
+                child: Text(
+                  'اختيار العميل',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // User info for desktop
+              if (isDesktop) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.person,
+                        size: 16,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        user.username,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          Padding(
+            padding: EdgeInsets.only(left: isDesktop ? 16 : 12),
+            child: PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'logout') {
+                  onLogout();
+                } else if (value == 'refresh') {
+                  onRefresh();
+                }
+              },
+              icon: const Icon(
+                Icons.more_vert,
+                color: Colors.white,
+                size: 20,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'refresh',
+                  child: Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.refresh,
+                          color: const Color(AppConstants.accentColor),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'تحديث',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'logout',
+                  child: Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.logout,
+                          color: const Color(AppConstants.errorColor),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'تسجيل الخروج',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
           ),
-
-          // Content
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredContacts.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 64,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _searchQuery.isEmpty
-                                  ? 'لا توجد عملاء'
-                                  : 'لا توجد نتائج للبحث "$_searchQuery"',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey.shade600,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      )
-                    : Padding(
-                        padding: EdgeInsets.all(isDesktop ? 24 : 16),
-                        child: GridView.builder(
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: _getCrossAxisCount(screenWidth),
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            childAspectRatio: isDesktop ? 3.5 : 4,
-                          ),
-                          itemCount: _filteredContacts.length,
-                          itemBuilder: (context, index) {
-                            final contact = _filteredContacts[index];
-                            return _ContactCard(
-                              contact: contact,
-                              onTap: () => _selectContact(contact),
-                              isDesktop: isDesktop,
-                            );
-                          },
-                        ),
-                      ),
-          ),
         ],
       ),
     );
   }
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
 class _ContactCard extends StatefulWidget {
@@ -362,94 +743,181 @@ class _ContactCardState extends State<_ContactCard> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: EdgeInsets.all(widget.isDesktop ? 16 : 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _isHovered ? Colors.blue.shade300 : Colors.grey.shade200,
-                width: _isHovered ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(_isHovered ? 0.1 : 0.05),
-                  blurRadius: _isHovered ? 8 : 4,
-                  spreadRadius: _isHovered ? 2 : 0,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // Avatar
-                CircleAvatar(
-                  radius: widget.isDesktop ? 24 : 20,
-                  backgroundColor: Colors.blue.shade100,
-                  child: Text(
-                    widget.contact.nameAr.isNotEmpty
-                        ? widget.contact.nameAr[0]
-                        : '؟',
-                    style: TextStyle(
-                      fontSize: widget.isDesktop ? 16 : 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
-                    ),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: EdgeInsets.all(widget.isDesktop ? 8 : 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _isHovered
+                        ? const Color(AppConstants.accentColor)
+                        : Colors.transparent,
+                    width: _isHovered ? 2 : 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(_isHovered ? 0.08 : 0.04),
+                      blurRadius: _isHovered ? 12 : 8,
+                      spreadRadius: _isHovered ? 2 : 1,
+                      offset: const Offset(0, 0),
+                    ),
+                  ],
                 ),
-                SizedBox(width: widget.isDesktop ? 16 : 12),
-
-                // Contact Info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        ArabicTextHelper.cleanText(widget.contact.nameAr),
-                        style: TextStyle(
-                          fontSize: widget.isDesktop ? 16 : 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                child: Row(
+                  children: [
+                    // Enhanced Avatar
+                    Container(
+                      width: widget.isDesktop ? 48 : 48,
+                      height: widget.isDesktop ? 48 : 48,
+                      decoration: BoxDecoration(
+                        color: const Color(AppConstants.accentColor),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(AppConstants.accentColor)
+                                .withOpacity(0.3),
+                            blurRadius: 6,
+                            spreadRadius: 0,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'رقم العميل: ${widget.contact.code}',
-                        style: TextStyle(
-                          fontSize: widget.isDesktop ? 12 : 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      if (widget.contact.area != null && widget.isDesktop) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'المنطقة: ${widget.contact.area}',
+                      child: Center(
+                        child: Text(
+                          widget.contact.nameAr.isNotEmpty
+                              ? widget.contact.nameAr[0]
+                              : 'ع',
                           style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey.shade500,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: widget.isDesktop ? 18 : 18,
                           ),
                         ),
-                      ],
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
 
-                // Arrow
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: widget.isDesktop ? 16 : 14,
-                  color:
-                      _isHovered ? Colors.blue.shade600 : Colors.grey.shade400,
+                    SizedBox(width: widget.isDesktop ? 16 : 14),
+
+                    // Contact Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Contact Name
+                          Flexible(
+                            child: Text(
+                              ArabicTextHelper.cleanText(widget.contact.nameAr),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: widget.isDesktop ? 13 : 14,
+                                color: const Color(AppConstants.primaryColor),
+                                height: 1.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          SizedBox(height: widget.isDesktop ? 6 : 8),
+
+                          // Contact Code with better styling
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: widget.isDesktop ? 6 : 8,
+                                    vertical: widget.isDesktop ? 3 : 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(AppConstants.accentColor)
+                                        .withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '#',
+                                    style: TextStyle(
+                                      fontSize: widget.isDesktop ? 9 : 10,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          const Color(AppConstants.accentColor),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: widget.isDesktop ? 6 : 8),
+                                Flexible(
+                                  child: Text(
+                                    widget.contact.code,
+                                    style: TextStyle(
+                                      fontSize: widget.isDesktop ? 11 : 12,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          const Color(AppConstants.accentColor),
+                                      height: 1.1,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Area info for desktop - only if there's space
+                          if (widget.contact.area != null &&
+                              widget.isDesktop) ...[
+                            SizedBox(height: 4),
+                            Flexible(
+                              child: Text(
+                                'المنطقة: ${widget.contact.area}',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.1,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Enhanced Arrow
+                    Container(
+                      padding: EdgeInsets.all(widget.isDesktop ? 8 : 10),
+                      decoration: BoxDecoration(
+                        color: const Color(AppConstants.primaryColor)
+                            .withOpacity(_isHovered ? 0.12 : 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.arrow_back_ios,
+                        size: widget.isDesktop ? 14 : 16,
+                        color: _isHovered
+                            ? const Color(AppConstants.accentColor)
+                            : const Color(AppConstants.primaryColor),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
