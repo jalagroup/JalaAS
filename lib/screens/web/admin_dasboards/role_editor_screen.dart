@@ -585,8 +585,11 @@ class _ConfigFieldState extends State<_ConfigField> {
   }
 
   Widget _buildSelect() {
-    final val = widget.value?.toString() ??
+    final raw = widget.value?.toString() ??
         widget.field.defaultValue?.toString();
+    // Guard: if stored value isn't a valid option, fall back to null
+    final validValues = widget.field.options.map((o) => o.value).toSet();
+    final val = (raw != null && validValues.contains(raw)) ? raw : null;
     return DropdownButtonFormField<String>(
       value: val,
       isExpanded: true,
