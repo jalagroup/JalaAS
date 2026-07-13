@@ -11,6 +11,9 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'dart:async';
 
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
+import 'package:jala_as/utils/api_exception.dart';
+
 class Helpers {
   // Date Formatting Methods
   static String formatDate(DateTime date) {
@@ -19,6 +22,24 @@ class Helpers {
 
   static String formatDisplayDate(DateTime date) {
     return DateFormat(AppConstants.displayDateFormat).format(date);
+  }
+
+  static String formatCurrency(double amount) {
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    return formatter.format(amount);
+  }
+
+  /// Format month year for display
+  static String formatMonthYear(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}';
+  }
+
+  /// Remove worksheet by index
+
+  /// Format DateTime to API date format (yyyy-MM-dd)
+  static String formatApiDate(DateTime date) {
+    final formatter = DateFormat('yyyy-MM-dd');
+    return formatter.format(date);
   }
 
   static String formatDateTime(DateTime dateTime) {
@@ -610,6 +631,106 @@ class Helpers {
       message,
       isError: true,
       duration: AppConstants.longSnackBarDuration,
+    );
+  }
+
+  /// Show an API error in a dialog.
+  /// Extracts [ApiException.userMessage] when available, otherwise uses
+  /// [error.toString()] stripping common exception prefixes.
+  /// Splits on `\n` so multi-line server messages render as separate paragraphs.
+  static Future<void> showApiErrorDialog(
+    BuildContext context,
+    dynamic error,
+  ) async {
+    if (!context.mounted) return;
+
+    // Extract clean message
+    String raw = error is ApiException
+        ? error.userMessage
+        : error.toString();
+
+    // Strip common Dart exception wrappers that add no value to the user
+    raw = raw
+        .replaceAll('Exception: ', '')
+        .replaceAll('ApiException: ', '')
+        .trim();
+
+    // Split on literal \n characters sent by the server
+    final paragraphs = raw
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(AppConstants.largeBorderRadius),
+          ),
+          titlePadding:
+              const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          contentPadding:
+              const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline,
+                  color: Color(AppConstants.errorColor), size: 22),
+              SizedBox(width: 8),
+              Text(
+                'خطأ',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(AppConstants.primaryTextColor),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Divider(height: 1),
+              const SizedBox(height: 10),
+              ...paragraphs.map(
+                (p) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    p,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(AppConstants.primaryTextColor),
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actionsPadding:
+              const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppConstants.primaryColor),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(AppConstants.borderRadius),
+                ),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 10),
+              ),
+              child: const Text('حسناً'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

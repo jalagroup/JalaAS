@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:jala_as/screens/web/web_welcome_screen.dart';
 import '../../models/user.dart';
-import 'web_contact_selection_screen.dart';
+import 'account_statements/web_contact_selection_screen.dart';
 
 class WebStatementsScreen extends StatelessWidget {
   final AppUser user;

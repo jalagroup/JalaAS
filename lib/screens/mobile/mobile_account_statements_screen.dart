@@ -92,12 +92,7 @@ class _AccountStatementsScreenState extends State<AccountStatementsScreen> {
         _isLoading = false;
       });
       if (mounted) {
-        // Check if the widget is still mounted
-        Helpers.showSnackBar(
-          context,
-          'فشل في تحميل كشف الحساب: ${e.toString()}',
-          isError: true,
-        );
+        Helpers.showApiErrorDialog(context, e);
       }
     }
   }

@@ -1,6 +1,7 @@
 // lib/screens/mobile/mobile_login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:jala_as/screens/mobile/welcome_screen.dart';
+import '../../services/fcm_service.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
@@ -57,6 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
           await Helpers.setLoggedIn(true);
           await Helpers.saveUserData(user.toJson());
 
+          FCMService.setupForUser(user);
+
           if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
@@ -102,14 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                            offset: const Offset(0, 0),
-                          ),
-                        ],
                       ),
                       child: Image.asset(
                         AppConstants.logoPath,

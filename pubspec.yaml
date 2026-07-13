@@ -1,5 +1,5 @@
 name: jala_as
-description: جالا - كشف الحساب - Account Statement Management App
+description: Jala Success - Account Statement Management App
 
 publish_to: 'none'
 
@@ -10,6 +10,10 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  
+  # Localization (REQUIRED for date picker)
+  flutter_localizations:
     sdk: flutter
   
   # UI & Navigation
@@ -34,23 +38,46 @@ dependencies:
   printing: ^5.12.0
   
   # Utilities
-  intl: ^0.19.0
+  intl: ^0.20.2
   connectivity_plus: ^6.1.4
   flutter_launcher_icons: ^0.14.4
   pin_code_fields: ^8.0.1
+  uuid: ^4.5.1
+
+  sqflite: ^2.3.0                    # Local database
+  device_info_plus: ^9.1.1            # Device identification
+  crypto: ^3.0.3                      # Security (hashing)
+  path: ^1.8.3                        # File paths
+  
+  # Excel handling
+  excel: ^4.0.6
+  syncfusion_flutter_xlsio: ^29.1.38
+  
+  # Image & File handling
+  image_picker: ^1.0.7
+  path_provider: ^2.1.2
+  permission_handler: ^11.3.0
+  
+  # Web specific
+  universal_html: ^2.2.4
   
   # Platform specific
   flutter_web_plugins:
     sdk: flutter
-
-  flutter_localizations:
-    sdk: flutter
+  share_plus: ^12.0.1
+  photo_view: ^0.15.0
+  file_picker: ^10.3.3
+  firebase_messaging: ^16.0.4
+  firebase_core: ^4.2.1
+  flutter_local_notifications: ^18.0.1  # ADD THIS
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  get: ^4.7.2
+  
+  # Remove get from dev_dependencies as it should be in dependencies if used
+  # get: ^4.7.2
 
 # App Icon Configuration
 flutter_launcher_icons:
@@ -70,6 +97,9 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  
+  # Generate localization files
+  generate: true
   
   assets:
     - assets/images/

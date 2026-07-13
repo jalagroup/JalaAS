@@ -1,6 +1,7 @@
 // lib/services/pdf_service.dart - Complete Enhanced Version with Language Chunks
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:jala_as/models/contact_group.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../models/contact.dart';
 import '../models/account_statement.dart';
 import '../utils/arabic_text_helper.dart';
+import 'package:jala_as/models/returns_models.dart';
 
 // ==================== CHARACTER TYPE ENUMERATION ====================
 
@@ -28,6 +30,21 @@ enum WordType {
   numberSequence,
   symbol,
   separator,
+}
+
+/// Data class for customer information lines
+class CustomerDataLine {
+  final String label;
+  final String value;
+  final bool isSection;
+  final bool hasValue;
+
+  CustomerDataLine({
+    required this.label,
+    required this.value,
+    this.isSection = false,
+    this.hasValue = true,
+  });
 }
 
 class ProcessedWord {
@@ -306,6 +323,330 @@ class PdfService {
     } else {
       return 'neutral';
     }
+  }
+
+  /// Generate multiple PDFs for group account statements
+  static Future<Map<String, Uint8List>> generateGroupAccountStatementPdfs({
+    required List<ContactStatementResult> results,
+    required String fromDate,
+    required String toDate,
+    Function(int current, int total, String contactName)? onProgress,
+  }) async {
+    final pdfs = <String, Uint8List>{};
+    int current = 0;
+
+    for (final result in results) {
+      current++;
+      if (onProgress != null) {
+        onProgress(current, results.length, result.contact.nameAr);
+      }
+
+      if (result.success && result.statements.isNotEmpty) {
+        try {
+          final pdfBytes = await generateAccountStatementPdf(
+            contact: result.contact,
+            statements: result.statements,
+            fromDate: fromDate,
+            toDate: toDate,
+          );
+
+          // Use contact code as key for unique identification
+          pdfs[result.contact.code] = pdfBytes;
+        } catch (e) {
+          print('Error generating PDF for ${result.contact.nameAr}: $e');
+        }
+      }
+    }
+
+    return pdfs;
+  }
+
+  /// Generate Sales Return PDF for small thermal printers (58mm, 80mm)
+  static Future<Uint8List> generateSalesReturnPdf({
+    required String returnCode,
+    required String contactCode,
+    required String contactName,
+    required String returnDate,
+    required String returnReasonName,
+    required String warehouseCode,
+    required String warehouseName,
+    required List<ReturnItem> items,
+    required String username,
+    String? comment,
+    double paperWidth = 80, // 80mm default, can be 58mm or 80mm
+  }) async {
+    // ✅ CRITICAL FIX: Load fonts using the class method
+    await _loadFonts();
+
+    final pdf = pw.Document();
+
+    // Calculate width in points (1mm = 2.83465 points)
+    final pageWidth = paperWidth * 2.83465;
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(
+          pageWidth,
+          double.infinity,
+          marginAll: 5 * 2.83465, // 5mm margins
+        ),
+        textDirection: pw.TextDirection.rtl,
+        // ✅ CRITICAL FIX: Use the cached fonts with fallback
+        theme: pw.ThemeData.withFont(
+          base: _arabicFont!,
+          bold: _arabicBoldFont!,
+          fontFallback: [
+            _arabicFont!,
+            _arabicBoldFont!,
+            _englishFont!,
+            _englishBoldFont!,
+          ],
+        ),
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Center(
+                child: pw.Text(
+                  'مرتجع مبيعات',
+                  style: pw.TextStyle(
+                    font: _arabicBoldFont!,
+                    fontSize: paperWidth >= 80 ? 16 : 14,
+                    fontWeight: pw.FontWeight.bold,
+                    fontFallback: [_arabicFont!, _englishFont!],
+                  ),
+                  textDirection: pw.TextDirection.rtl,
+                ),
+              ),
+              pw.SizedBox(height: 3),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 3),
+
+              // Return Info
+              _buildPdfRow('رقم المرتجع:', returnCode, paperWidth),
+              _buildPdfRow('التاريخ:', returnDate, paperWidth),
+              pw.SizedBox(height: 3),
+
+              // Contact Info
+              _buildPdfRow('كود الدليل:', contactCode, paperWidth),
+              _buildPdfRow('اسم الدليل:', _cleanText(contactName), paperWidth),
+              pw.SizedBox(height: 3),
+
+              // Warehouse & Reason
+              _buildPdfRow(
+                  'المخزن:',
+                  '$warehouseCode - ${_cleanText(warehouseName ?? '')}',
+                  paperWidth),
+              _buildPdfRow(
+                  'سبب الإرجاع:', _cleanText(returnReasonName), paperWidth),
+
+              pw.SizedBox(height: 3),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 3),
+
+              // Items Header
+              pw.Text(
+                'الأصناف:',
+                style: pw.TextStyle(
+                  font: _arabicBoldFont!,
+                  fontSize: paperWidth >= 80 ? 10 : 9,
+                  fontWeight: pw.FontWeight.bold,
+                  fontFallback: [_arabicFont!],
+                ),
+                textDirection: pw.TextDirection.rtl,
+              ),
+              pw.SizedBox(height: 2),
+
+              // Items List
+              ...items.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      '${index + 1}. ${_cleanText(item.itemName ?? item.itemCode ?? 'غير محدد')}',
+                      style: pw.TextStyle(
+                        font: _arabicFont!,
+                        fontSize: paperWidth >= 80 ? 9 : 8,
+                        fontFallback: [_arabicBoldFont!, _englishFont!],
+                      ),
+                      textDirection: pw.TextDirection.rtl,
+                    ),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text(
+                          'الكمية: ${item.quantity.toStringAsFixed(2)}',
+                          style: pw.TextStyle(
+                            font: _arabicFont!,
+                            fontSize: paperWidth >= 80 ? 8 : 7,
+                            fontFallback: [_englishFont!],
+                          ),
+                          textDirection: pw.TextDirection.rtl,
+                        ),
+                        pw.Text(
+                          'الكود: ${item.itemCode ?? '-'}',
+                          style: pw.TextStyle(
+                            font: _arabicFont!,
+                            fontSize: paperWidth >= 80 ? 8 : 7,
+                            fontFallback: [_englishFont!],
+                          ),
+                          textDirection: pw.TextDirection.rtl,
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 2),
+                  ],
+                );
+              }).toList(),
+
+              pw.SizedBox(height: 3),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 3),
+
+              // Summary
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'إجمالي الأصناف: ${items.length}',
+                    style: pw.TextStyle(
+                      font: _arabicBoldFont!,
+                      fontSize: paperWidth >= 80 ? 9 : 8,
+                      fontWeight: pw.FontWeight.bold,
+                      fontFallback: [_arabicFont!, _englishFont!],
+                    ),
+                    textDirection: pw.TextDirection.rtl,
+                  ),
+                  pw.Text(
+                    'إجمالي الكمية: ${items.fold(0.0, (sum, item) => sum + item.quantity).toStringAsFixed(2)}',
+                    style: pw.TextStyle(
+                      font: _arabicBoldFont!,
+                      fontSize: paperWidth >= 80 ? 9 : 8,
+                      fontWeight: pw.FontWeight.bold,
+                      fontFallback: [_arabicFont!, _englishFont!],
+                    ),
+                    textDirection: pw.TextDirection.rtl,
+                  ),
+                ],
+              ),
+
+              // Comment
+              if (comment != null && comment.isNotEmpty) ...[
+                pw.SizedBox(height: 3),
+                pw.Divider(thickness: 1),
+                pw.SizedBox(height: 3),
+                pw.Text(
+                  'ملاحظة:',
+                  style: pw.TextStyle(
+                    font: _arabicBoldFont!,
+                    fontSize: paperWidth >= 80 ? 9 : 8,
+                    fontWeight: pw.FontWeight.bold,
+                    fontFallback: [_arabicFont!],
+                  ),
+                  textDirection: pw.TextDirection.rtl,
+                ),
+                pw.Text(
+                  _cleanText(comment),
+                  style: pw.TextStyle(
+                    font: _arabicFont!,
+                    fontSize: paperWidth >= 80 ? 8 : 7,
+                    fontFallback: [_arabicBoldFont!],
+                  ),
+                  textDirection: pw.TextDirection.rtl,
+                ),
+              ],
+
+              pw.SizedBox(height: 5),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 3),
+
+              // Footer
+              pw.Center(
+                child: pw.Text(
+                  'المستخدم: ${_cleanText(username)}',
+                  style: pw.TextStyle(
+                    font: _arabicFont!,
+                    fontSize: paperWidth >= 80 ? 8 : 7,
+                    fontFallback: [_arabicBoldFont!, _englishFont!],
+                  ),
+                  textDirection: pw.TextDirection.rtl,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Center(
+                child: pw.Text(
+                  DateTime.now().toString().substring(0, 19),
+                  style: pw.TextStyle(
+                    font: _englishFont!,
+                    fontSize: paperWidth >= 80 ? 7 : 6,
+                    fontFallback: [_arabicFont!],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+// ✅ UPDATED: _buildPdfRow method - removed font parameter
+  static pw.Widget _buildPdfRow(
+    String label,
+    String value,
+    double paperWidth,
+  ) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 2),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: paperWidth >= 80 ? 60 : 50,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                font: _arabicBoldFont!,
+                fontSize: paperWidth >= 80 ? 9 : 8,
+                fontWeight: pw.FontWeight.bold,
+                fontFallback: [_arabicFont!, _englishFont!],
+              ),
+              textDirection: pw.TextDirection.rtl,
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value,
+              style: pw.TextStyle(
+                font: _arabicFont!,
+                fontSize: paperWidth >= 80 ? 9 : 8,
+                fontFallback: [_arabicBoldFont!, _englishFont!],
+              ),
+              textDirection: pw.TextDirection.rtl,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Generate single PDF from contact statement result
+  static Future<Uint8List> generateSingleContactPdf({
+    required ContactStatementResult result,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    return await generateAccountStatementPdf(
+      contact: result.contact,
+      statements: result.statements,
+      fromDate: fromDate,
+      toDate: toDate,
+    );
   }
 
   /// Legacy method for backward compatibility
@@ -1873,6 +2214,904 @@ class PdfService {
     );
 
     return pdf.save();
+  }
+
+  /// Generate Customer Opening PDF with fixed alignment and separate tables
+  static Future<Uint8List> generateCustomerOpeningPdf(
+      {required String businessName,
+      required String ownerName,
+      required String responsiblePerson,
+      required String taxId,
+      required String idNumber,
+      required String mobile,
+      required String telephone,
+      required String email,
+      required String state,
+      required String street,
+      required String stateType,
+      required String beside,
+      required String businessType,
+      required String visitDays,
+      required String paymentMethod,
+      required String creditLimit,
+      required String date,
+      required String contactCode,
+      required String createdBy,
+      required String salesman}) async {
+    try {
+      await _loadFonts();
+    } catch (e) {
+      print('DEBUG: Font loading failed: $e');
+    }
+
+    final pdf = pw.Document();
+
+    try {
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          textDirection: pw.TextDirection.rtl,
+          margin: const pw.EdgeInsets.all(8),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Compact Header
+                pw.Container(
+                  width: double.infinity,
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                    border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'شركة جالا فود',
+                        style: pw.TextStyle(
+                          font: _arabicBoldFont ?? _arabicFont,
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                        textDirection: pw.TextDirection.rtl,
+                      ),
+                      pw.Text(
+                        'استمارة فتح زبون جديد',
+                        style: pw.TextStyle(
+                          font: _arabicBoldFont ?? _arabicFont,
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                        textDirection: pw.TextDirection.rtl,
+                      ),
+                    ],
+                  ),
+                ),
+
+                pw.SizedBox(height: 4),
+
+                // Contact Code and Date Row
+                pw.Container(
+                  width: double.infinity,
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'رقم العميل: $contactCode',
+                        style: pw.TextStyle(
+                          font: _arabicBoldFont ?? _arabicFont,
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                        textDirection: pw.TextDirection.rtl,
+                      ),
+                      pw.Text(
+                        'التاريخ: $date',
+                        style: pw.TextStyle(
+                          font: _arabicFont ?? _arabicBoldFont,
+                          fontSize: 10,
+                        ),
+                        textDirection: pw.TextDirection.rtl,
+                      ),
+                    ],
+                  ),
+                ),
+
+                pw.SizedBox(height: 40),
+
+                // Table 1: Personal Information
+                _buildTableWithTitle(
+                  title: 'بطاقة معلومات شخصية',
+                  rows: [
+                    ['اسم المندوب', createdBy, 'رقم المندوب', salesman],
+                    [
+                      'اسم المحل التجاري',
+                      businessName,
+                      'رقم المشتغل المرخص',
+                      taxId.isNotEmpty ? taxId : '-'
+                    ],
+                    [
+                      'اسم مالك المحل',
+                      ownerName,
+                      'رقم الهوية',
+                      idNumber.isNotEmpty ? idNumber : '-'
+                    ],
+                    ['اسم الشخص المسؤول', responsiblePerson, 'خلوي', mobile],
+                    [
+                      'هاتف المحل',
+                      telephone.isNotEmpty ? telephone : '-',
+                      'البريد الإلكتروني',
+                      email.isNotEmpty ? email : '-'
+                    ],
+                  ],
+                ),
+
+                pw.SizedBox(height: 16),
+
+                // Table 2: Address Information
+                _buildTableWithTitle(
+                  title: 'العنوان',
+                  rows: [
+                    ['المنطقة', state, 'الشارع', street],
+                    ['نوع المنطقة', stateType, 'بجانب', beside],
+                  ],
+                ),
+
+                pw.SizedBox(height: 16),
+
+                // Table 3: Business Information
+                _buildTableWithTitle(
+                  title: 'بطاقة معلومات تجارية',
+                  rows: [
+                    [
+                      'نوع العمل',
+                      businessType,
+                      'أيام الزيارات',
+                      visitDays.isNotEmpty ? visitDays : '-'
+                    ],
+                  ],
+                ),
+
+                pw.SizedBox(height: 16),
+
+                // Table 4: Payment Methods
+                _buildTableWithTitle(
+                  title: 'طرق الدفع',
+                  rows: [
+                    [
+                      'طريقة الدفع',
+                      paymentMethod.isNotEmpty ? paymentMethod : '-',
+                      'الحد الأقصى للدين',
+                      creditLimit.isNotEmpty ? creditLimit : '-'
+                    ],
+                  ],
+                ),
+
+                pw.SizedBox(height: 16),
+
+                // Status Information
+                pw.Container(
+                  width: double.infinity,
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey100,
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'تاريخ الإنشاء: $date',
+                        style: pw.TextStyle(
+                          font: _arabicFont ?? _arabicBoldFont,
+                          fontSize: 9,
+                        ),
+                        textDirection: pw.TextDirection.rtl,
+                      ),
+                    ],
+                  ),
+                ),
+
+                pw.Spacer(),
+
+                // Footer
+                pw.Container(
+                  width: double.infinity,
+                  padding:
+                      const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey100,
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                  ),
+                  child: pw.Text(
+                    'ملاحظة: هذا العميل تم إنشاؤه من تطبيق الموبايل',
+                    style: pw.TextStyle(
+                      font: _arabicFont ?? _arabicBoldFont,
+                      fontSize: 8,
+                    ),
+                    textDirection: pw.TextDirection.rtl,
+                    textAlign: pw.TextAlign.center,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      print('DEBUG: Fixed PDF generation completed successfully');
+      return pdf.save();
+    } catch (e) {
+      print('DEBUG: PDF generation error: $e');
+      return await _createFallbackPdf(
+        contactCode: contactCode,
+        date: date,
+        createdBy: createdBy,
+        businessName: businessName,
+        ownerName: ownerName,
+        responsiblePerson: responsiblePerson,
+        taxId: taxId,
+        idNumber: idNumber,
+        mobile: mobile,
+        telephone: telephone,
+        email: email,
+        state: state,
+        street: street,
+        stateType: stateType,
+        beside: beside,
+        businessType: businessType,
+        visitDays: visitDays,
+        paymentMethod: paymentMethod,
+        creditLimit: creditLimit,
+      );
+    }
+  }
+
+  /// Build a table with title
+  static pw.Widget _buildTableWithTitle({
+    required String title,
+    required List<List<String>> rows,
+  }) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // Table Title
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.grey300,
+            border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+          ),
+          child: pw.Text(
+            title,
+            style: pw.TextStyle(
+              font: _arabicBoldFont ?? _arabicFont,
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            textDirection: pw.TextDirection.rtl,
+            textAlign: pw.TextAlign.center,
+          ),
+        ),
+
+        // Table Content
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(2), // Right label (fixed order)
+            1: const pw.FlexColumnWidth(3), // Right value (fixed order)
+            2: const pw.FlexColumnWidth(2), // Left label (fixed order)
+            3: const pw.FlexColumnWidth(3), // Left value (fixed order)
+          },
+          children: rows.map((row) {
+            return pw.TableRow(
+              children: [
+                _createFixedCell(row[3]), // Left value
+                _createFixedCell(row[2], isLabel: true), // Left label
+                _createFixedCell(row[1]), // Right value
+                _createFixedCell(row[0], isLabel: true), // Right label
+              ],
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// Create cell with proper right alignment
+  static pw.Widget _createFixedCell(
+    String text, {
+    bool isLabel = false,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300, width: 0.2),
+      ),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          font: isLabel
+              ? (_arabicBoldFont ?? _arabicFont)
+              : (_arabicFont ?? _arabicBoldFont),
+          fontSize: isLabel ? 9 : 8,
+          fontWeight: isLabel ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+        textDirection: pw.TextDirection.rtl,
+        textAlign: pw.TextAlign.right, // Fixed to right alignment
+        maxLines: 2,
+        overflow: pw.TextOverflow.clip,
+      ),
+    );
+  }
+
+  /// Enhanced fallback PDF with proper structure
+  static Future<Uint8List> _createFallbackPdf({
+    required String contactCode,
+    required String date,
+    required String createdBy,
+    required String businessName,
+    required String ownerName,
+    required String responsiblePerson,
+    required String taxId,
+    required String idNumber,
+    required String mobile,
+    required String telephone,
+    required String email,
+    required String state,
+    required String street,
+    required String stateType,
+    required String beside,
+    required String businessType,
+    required String visitDays,
+    required String paymentMethod,
+    required String creditLimit,
+  }) async {
+    final fallbackPdf = pw.Document();
+    fallbackPdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(8),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Customer Information Form - $contactCode',
+                style:
+                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Text('Date: $date'),
+              pw.SizedBox(height: 12),
+
+              // Personal Information
+              _buildFallbackTable(
+                title: 'Personal Information',
+                data: [
+                  ['Sales Rep:', createdBy, 'Rep Code:', '015'],
+                  [
+                    'Business:',
+                    businessName,
+                    'Tax ID:',
+                    taxId.isNotEmpty ? taxId : '-'
+                  ],
+                  [
+                    'Owner:',
+                    ownerName,
+                    'ID:',
+                    idNumber.isNotEmpty ? idNumber : '-'
+                  ],
+                  ['Responsible:', responsiblePerson, 'Mobile:', mobile],
+                  [
+                    'Phone:',
+                    telephone.isNotEmpty ? telephone : '-',
+                    'Email:',
+                    email.isNotEmpty ? email : '-'
+                  ],
+                ],
+              ),
+
+              pw.SizedBox(height: 8),
+
+              // Address Information
+              _buildFallbackTable(
+                title: 'Address',
+                data: [
+                  ['State:', state, 'Street:', street],
+                  ['State Type:', stateType, 'Beside:', beside],
+                ],
+              ),
+
+              pw.SizedBox(height: 8),
+
+              // Business Information
+              _buildFallbackTable(
+                title: 'Business Information',
+                data: [
+                  [
+                    'Business Type:',
+                    businessType,
+                    'Visit Days:',
+                    visitDays.isNotEmpty ? visitDays : '-'
+                  ],
+                ],
+              ),
+
+              pw.SizedBox(height: 8),
+
+              // Payment Methods
+              _buildFallbackTable(
+                title: 'Payment Methods',
+                data: [
+                  [
+                    'Payment Method:',
+                    paymentMethod.isNotEmpty ? paymentMethod : '-',
+                    'Credit Limit:',
+                    creditLimit.isNotEmpty ? creditLimit : '-'
+                  ],
+                ],
+              ),
+
+              pw.Spacer(),
+
+              pw.Text(
+                'Status: Inactive - Pending Review | Created: $date',
+                style:
+                    pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Note: This customer was created from mobile app and needs activation from management',
+                style:
+                    pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    return fallbackPdf.save();
+  }
+
+  /// Build fallback table with title
+  static pw.Widget _buildFallbackTable({
+    required String title,
+    required List<List<String>> data,
+  }) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(4),
+          decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+          child: pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+        ),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(1),
+            1: const pw.FlexColumnWidth(2),
+            2: const pw.FlexColumnWidth(1),
+            3: const pw.FlexColumnWidth(2),
+          },
+          children: data.map((row) {
+            return pw.TableRow(
+              children: [
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(2),
+                  child: pw.Text(row[0],
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(2),
+                  child: pw.Text(row[1]),
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(2),
+                  child: pw.Text(row[2],
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(2),
+                  child: pw.Text(row[3]),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// Prepare all customer data lines in order
+  static List<CustomerDataLine> _prepareCustomerDataLines({
+    required String businessName,
+    required String ownerName,
+    required String responsiblePerson,
+    required String taxId,
+    required String idNumber,
+    required String mobile,
+    required String telephone,
+    required String email,
+    required String state,
+    required String street,
+    required String stateType,
+    required String beside,
+    required String businessType,
+    required String visitDays,
+    required String paymentMethod,
+    required String creditLimit,
+    required String createdBy,
+  }) {
+    List<CustomerDataLine> lines = [];
+
+    // Basic Information Section
+    lines.add(CustomerDataLine(
+        label: 'المعلومات الأساسية', value: '', isSection: true));
+    lines
+        .add(CustomerDataLine(label: 'اسم المحل التجاري', value: businessName));
+    lines.add(CustomerDataLine(label: 'اسم مالك المحل', value: ownerName));
+    lines.add(
+        CustomerDataLine(label: 'اسم الشخص المسؤول', value: responsiblePerson));
+
+    // Official Information Section
+    lines.add(CustomerDataLine(
+        label: 'المعلومات الرسمية', value: '', isSection: true));
+    lines.add(CustomerDataLine(
+        label: 'رقم المشتغل المرخص', value: taxId.isNotEmpty ? taxId : '-'));
+    lines.add(CustomerDataLine(
+        label: 'رقم الهوية', value: idNumber.isNotEmpty ? idNumber : '-'));
+
+    // Contact Information Section
+    lines.add(
+        CustomerDataLine(label: 'معلومات الاتصال', value: '', isSection: true));
+    lines.add(CustomerDataLine(label: 'خلوي', value: mobile));
+    lines.add(CustomerDataLine(
+        label: 'هاتف المحل', value: telephone.isNotEmpty ? telephone : '-'));
+    lines.add(CustomerDataLine(
+        label: 'البريد الإلكتروني', value: email.isNotEmpty ? email : '-'));
+
+    // Address Section
+    lines.add(CustomerDataLine(label: 'العنوان', value: '', isSection: true));
+    lines.add(CustomerDataLine(label: 'المنطقة', value: state));
+    lines.add(CustomerDataLine(label: 'نوع المنطقة', value: stateType));
+    lines.add(CustomerDataLine(label: 'الشارع', value: street));
+    lines.add(CustomerDataLine(label: 'بجانب', value: beside));
+
+    // Business Details Section
+    lines.add(
+        CustomerDataLine(label: 'تفاصيل العمل', value: '', isSection: true));
+    lines.add(CustomerDataLine(label: 'نوع العمل', value: businessType));
+    lines.add(CustomerDataLine(
+        label: 'أيام الزيارات', value: visitDays.isNotEmpty ? visitDays : '-'));
+    lines.add(CustomerDataLine(
+        label: 'طريقة الدفع',
+        value: paymentMethod.isNotEmpty ? paymentMethod : '-'));
+    lines.add(CustomerDataLine(
+        label: 'الحد الأقصى للدين',
+        value: creditLimit.isNotEmpty ? creditLimit : '-'));
+
+    // System Information Section
+    lines.add(
+        CustomerDataLine(label: 'معلومات النظام', value: '', isSection: true));
+    lines.add(CustomerDataLine(label: 'تم الإنشاء بواسطة', value: createdBy));
+    lines.add(CustomerDataLine(
+        label: 'حالة العميل', value: 'غير مفعل - بانتظار المراجعة'));
+
+    return lines;
+  }
+
+  /// Paginate customer data lines based on available space
+  static List<List<CustomerDataLine>> _paginateCustomerData(
+    List<CustomerDataLine> allLines,
+    int firstPageMaxLines,
+    int otherPageMaxLines,
+  ) {
+    List<List<CustomerDataLine>> pages = [];
+    List<CustomerDataLine> currentPage = [];
+    int currentPageIndex = 0;
+
+    for (int i = 0; i < allLines.length; i++) {
+      CustomerDataLine line = allLines[i];
+
+      // Determine max lines for current page
+      int maxLinesForCurrentPage =
+          currentPageIndex == 0 ? firstPageMaxLines : otherPageMaxLines;
+
+      // Check if adding this line would exceed page capacity
+      if (currentPage.length >= maxLinesForCurrentPage) {
+        // Save current page and start new page
+        if (currentPage.isNotEmpty) {
+          pages.add(List.from(currentPage));
+          currentPage = [];
+          currentPageIndex++;
+        }
+      }
+
+      currentPage.add(line);
+    }
+
+    // Add the last page if it has content
+    if (currentPage.isNotEmpty) {
+      pages.add(currentPage);
+    }
+
+    // Ensure at least one page exists
+    if (pages.isEmpty) {
+      pages.add([]);
+    }
+
+    return pages;
+  }
+
+  /// Create header widget for customer PDF
+  static pw.Widget _createCustomerPdfHeader() {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey200,
+        border: pw.Border.all(color: PdfColors.grey400),
+      ),
+      child: pw.Text(
+        'شركة جالا فود',
+        style: pw.TextStyle(
+          font: _arabicBoldFont ?? _arabicFont,
+          fontSize: 18,
+          fontWeight: pw.FontWeight.bold,
+        ),
+        textDirection: pw.TextDirection.rtl,
+        textAlign: pw.TextAlign.center,
+      ),
+    );
+  }
+
+  /// Create title widget for customer PDF
+  static pw.Widget _createCustomerPdfTitle() {
+    return pw.Center(
+      child: pw.Text(
+        'استمارة فتح زبون جديد',
+        style: pw.TextStyle(
+          font: _arabicBoldFont ?? _arabicFont,
+          fontSize: 16,
+          fontWeight: pw.FontWeight.bold,
+        ),
+        textDirection: pw.TextDirection.rtl,
+      ),
+    );
+  }
+
+  /// Create metadata (contact code and date) for customer PDF
+  static pw.Widget _createCustomerPdfMetadata(String contactCode, String date) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          'رقم العميل: $contactCode',
+          style: pw.TextStyle(
+            font: _arabicBoldFont ?? _arabicFont,
+            fontSize: 12,
+            fontWeight: pw.FontWeight.bold,
+          ),
+          textDirection: pw.TextDirection.rtl,
+        ),
+        pw.Text(
+          'التاريخ: $date',
+          style: pw.TextStyle(
+            font: _arabicFont ?? _arabicBoldFont,
+            fontSize: 12,
+          ),
+          textDirection: pw.TextDirection.rtl,
+        ),
+      ],
+    );
+  }
+
+  /// Create individual data line widget
+  static pw.Widget _createCustomerDataLineWidget(CustomerDataLine line) {
+    if (line.isSection) {
+      // Section header - takes more vertical space
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(top: 12, bottom: 8),
+        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.grey300,
+          borderRadius: pw.BorderRadius.circular(4),
+        ),
+        child: pw.Row(
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                line.label,
+                style: pw.TextStyle(
+                  font: _arabicBoldFont ?? _arabicFont,
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                textDirection: pw.TextDirection.rtl,
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Data line - compact spacing
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(bottom: 6),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // Label (bold)
+            pw.Container(
+              width: 120,
+              child: pw.Text(
+                line.label + ':',
+                style: pw.TextStyle(
+                  font: _arabicBoldFont ?? _arabicFont,
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                textDirection: pw.TextDirection.rtl,
+              ),
+            ),
+
+            // Spacing
+            pw.SizedBox(width: 10),
+
+            // Value (normal)
+            pw.Expanded(
+              child: pw.Text(
+                line.value.isNotEmpty ? line.value : '-',
+                style: pw.TextStyle(
+                  font: _arabicFont ?? _arabicBoldFont,
+                  fontSize: 10,
+                ),
+                textDirection: pw.TextDirection.rtl,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// Create footer widget for customer PDF
+  static pw.Widget _createCustomerPdfFooter() {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey100,
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Text(
+        'ملاحظة: هذا العميل تم إنشاؤه من تطبيق الموبايل ويحتاج إلى تفعيل من الإدارة',
+        style: pw.TextStyle(
+          font: _arabicFont ?? _arabicBoldFont,
+          fontSize: 10,
+        ),
+        textDirection: pw.TextDirection.rtl,
+        textAlign: pw.TextAlign.center,
+      ),
+    );
+  }
+
+  /// Create fallback PDF in case of errors
+  static Future<Uint8List> _createFallbackCustomerPdf(
+    String contactCode,
+    String date,
+    String businessName,
+    String ownerName,
+    String mobile,
+  ) {
+    final fallbackPdf = pw.Document();
+    fallbackPdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Customer Information Form',
+                style:
+                    pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text('Customer Code: $contactCode'),
+              pw.Text('Date: $date'),
+              pw.SizedBox(height: 20),
+              pw.Text('Business Name: $businessName'),
+              pw.Text('Owner Name: $ownerName'),
+              pw.Text('Mobile: $mobile'),
+              pw.Spacer(),
+              pw.Text(
+                'Note: This customer was created from mobile app and needs activation from management',
+                style:
+                    pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    return fallbackPdf.save();
+  }
+
+  /// Create simple section header for customer opening PDF
+  static pw.TableRow _createSimpleSectionHeader(String title) {
+    return pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            title,
+            style: pw.TextStyle(
+              font: _arabicBoldFont ?? _arabicFont,
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            textDirection: pw.TextDirection.rtl,
+            textAlign: pw.TextAlign.center,
+          ),
+        ),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(''),
+        ),
+      ],
+    );
+  }
+
+  /// Create simple information row for customer opening PDF
+  static pw.TableRow _createSimpleInfoRow(String label, String value) {
+    return pw.TableRow(
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(right: pw.BorderSide(color: PdfColors.grey400)),
+          ),
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: _arabicFont ?? _arabicBoldFont,
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            textDirection: pw.TextDirection.rtl,
+          ),
+        ),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            value.isNotEmpty ? value : '-',
+            style: pw.TextStyle(
+              font: _arabicFont ?? _arabicBoldFont,
+              fontSize: 11,
+            ),
+            textDirection: pw.TextDirection.rtl,
+          ),
+        ),
+      ],
+    );
   }
 
   /// Generate Account Statement PDF - WITHOUT NOTES COLUMN

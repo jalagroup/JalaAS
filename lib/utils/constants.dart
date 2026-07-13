@@ -1,7 +1,7 @@
 // lib/utils/constants.dart
 class AppConstants {
   // App Information
-  static const String appName = 'جالا - كشف الحساب';
+  static const String appName = 'Jala Success';
   static const String appVersion = '1.0.0';
   static const String appDescription = 'Account Statement Management App';
 
@@ -9,6 +9,10 @@ class AppConstants {
   static const String supabaseUrl = 'https://ykwnsmyvkwjctidhoqib.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrd25zbXl2a3dqY3RpZGhvcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExOTkzMzYsImV4cCI6MjA2Njc3NTMzNn0.W6WYYc-s24kX2H_-9bvWe1nG31lDlFCSVnDSqIKD5xk';
+  // Get this from: Supabase Dashboard → Project Settings → API → service_role (secret)
+  static const String supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlrd25zbXl2a3dqY3RpZGhvcWliIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTE5OTMzNiwiZXhwIjoyMDY2Nzc1MzM2fQ.dssd3cFyN_0WyFeXc04Z4iQ1EUFpZnWHJsbvIli95do';
+  // Get this from: Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Key pair
+  static const String vapidKey = 'BDgMHy7pubn6As2aEBOPrw-_HLdZevtlOlWJ_exKY6STHgTvzZIbKrxnACAD8hoHW8JDThAEY2_w10cfdE6nxKE';
 
   // Shared Preferences Keys
   static const String pinCodeKey = 'pin_code';
