@@ -39,6 +39,8 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
   late final ScrollController _headerHScroll;
   late final ScrollController _dataHScroll;
   late final ScrollController _dataVScroll;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   CustomReportConfig get _cfg => widget.report.config;
   List<ReportField> get _visibleFields =>
@@ -69,7 +71,20 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
     _headerHScroll.dispose();
     _dataHScroll.dispose();
     _dataVScroll.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredSortedRows {
+    final sorted = _sortedRows;
+    if (_searchQuery.isEmpty) return sorted;
+    final q = _searchQuery.toLowerCase();
+    return sorted.where((row) {
+      return _visibleFields.any((f) {
+        final raw = _extractField(row, f.key);
+        return raw?.toString().toLowerCase().contains(q) ?? false;
+      });
+    }).toList();
   }
 
   void _syncHeader() {
@@ -121,12 +136,13 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
     final searchParts =
         allParams.entries.map((e) => '${e.key}:${e.value}').join(',');
 
-    // Build fields string from visible fields
-    final fieldKeys =
-        _cfg.fields.map((f) => f.key.replaceAll('.', '.')).join(',');
+    // Use primaryApiFields when set (avoids sending extra-source field names to Bisan)
+    final apiKeys = _cfg.primaryApiFields.isNotEmpty
+        ? _cfg.primaryApiFields.join(',')
+        : _cfg.fields.map((f) => f.key).join(',');
 
     final query =
-        'search=$searchParts${fieldKeys.isNotEmpty ? '&fields=$fieldKeys' : ''}';
+        'search=$searchParts${apiKeys.isNotEmpty ? '&fields=$apiKeys' : ''}';
     return '$base?$query';
   }
 
@@ -142,6 +158,13 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
       final paUrl =
           _cfg.company == ReportCompany.jalaf ? _kJalafUrl : _kZfiUrl;
 
+      // ── Logger: API call ────────────────────────────────────────────────────
+      debugPrint('');
+      debugPrint('╔══════════════════════════════════════════════════════════');
+      debugPrint('║  [ReportViewer] "${widget.report.nameAr}"');
+      debugPrint('║  Bisan URL  → $innerUrl');
+      debugPrint('╚══════════════════════════════════════════════════════════');
+
       final response = await http.post(
         Uri.parse(paUrl),
         headers: {'Content-Type': 'application/json'},
@@ -156,6 +179,18 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
       var rows =
           (decoded['rows'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
 
+      // ── Logger: first two rows ──────────────────────────────────────────────
+      debugPrint('');
+      debugPrint('╔══════════════════════════════════════════════════════════');
+      debugPrint('║  [ReportViewer] Response — ${rows.length} rows total');
+      if (rows.isNotEmpty) {
+        debugPrint('║  Row[0] → ${jsonEncode(rows[0])}');
+      }
+      if (rows.length > 1) {
+        debugPrint('║  Row[1] → ${jsonEncode(rows[1])}');
+      }
+      debugPrint('╚══════════════════════════════════════════════════════════');
+
       // Group rows if needed
       if (_cfg.groupByField != null && _cfg.groupByField!.isNotEmpty) {
         rows = _groupRows(rows, _cfg.groupByField!);
@@ -165,6 +200,11 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
       rows = rows
           .where((r) => _cfg.filters.every((f) => f.matches(r)))
           .toList();
+
+      // Merge extra API sources (multi-source reports)
+      if (_cfg.extraSources.isNotEmpty) {
+        rows = await _mergeExtraSources(rows);
+      }
 
       setState(() => _rows = rows);
     } catch (e) {
@@ -200,6 +240,9 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
   }
 
   dynamic _extractField(Map<String, dynamic> row, String key) {
+    // Try literal key first — handles flat keys that contain dots (e.g. "item.name")
+    if (row.containsKey(key)) return row[key];
+    // Fall back to dot-path navigation for genuinely nested objects
     if (key.contains('.')) {
       final parts = key.split('.');
       dynamic cur = row;
@@ -214,6 +257,92 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
     }
     return row[key];
   }
+
+  // ── Multi-source helpers ──────────────────────────────────────────────────
+
+  String _paUrlFor(ReportCompany company) =>
+      company == ReportCompany.jalaf ? _kJalafUrl : _kZfiUrl;
+
+  Future<List<Map<String, dynamic>>> _fetchSourceRows(
+      ReportDataSource src) async {
+    final company = src.company == ReportCompany.jalaf ? 'jalaf' : 'zfi';
+    final neededFields = {src.joinKey, src.valueField}.join(',');
+    final searchParts =
+        src.fixedParams.entries.map((e) => '${e.key}:${e.value}').join(',');
+    final innerUrl =
+        'https://gw.bisan.com/api/v2/$company/${src.endpoint}'
+        '?search=$searchParts&fields=$neededFields';
+
+    debugPrint('[MultiSource] ${src.id} → $innerUrl');
+
+    final response = await http.post(
+      Uri.parse(_paUrlFor(src.company)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'url': innerUrl, 'method': 'GET'}),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final rows =
+        (decoded['rows'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    debugPrint('[MultiSource] ${src.id}: ${rows.length} rows received');
+    return rows;
+  }
+
+  Map<String, double> _aggregateSource(
+      ReportDataSource src, List<Map<String, dynamic>> rows) {
+    final filtered =
+        rows.where((r) => src.preFilters.every((f) => f.matches(r))).toList();
+    final result = <String, double>{};
+    for (final row in filtered) {
+      final key =
+          (row.containsKey(src.joinKey) ? row[src.joinKey] : null)
+                  ?.toString() ??
+              '';
+      if (key.isEmpty) continue;
+      final rawVal =
+          row.containsKey(src.valueField) ? row[src.valueField] : null;
+      final val = double.tryParse(rawVal?.toString() ?? '') ?? 0.0;
+      if (src.aggregate == 'sum') {
+        result[key] = (result[key] ?? 0.0) + val;
+      } else {
+        result.putIfAbsent(key, () => val);
+      }
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> _mergeExtraSources(
+      List<Map<String, dynamic>> primaryRows) async {
+    debugPrint(
+        '[MultiSource] Fetching ${_cfg.extraSources.length} extra sources in parallel...');
+
+    final results =
+        await Future.wait(_cfg.extraSources.map(_fetchSourceRows));
+
+    // Build lookup: outputField → {joinKeyValue → aggregatedDouble}
+    final lookups = <String, Map<String, double>>{};
+    for (int i = 0; i < _cfg.extraSources.length; i++) {
+      final src = _cfg.extraSources[i];
+      lookups[src.outputField] = _aggregateSource(src, results[i]);
+      debugPrint(
+          '[MultiSource] ${src.id}: ${lookups[src.outputField]!.length} keys after aggregation');
+    }
+
+    // Merge into primary rows
+    return primaryRows.map((row) {
+      final merged = Map<String, dynamic>.from(row);
+      for (final src in _cfg.extraSources) {
+        final key = _extractField(row, src.joinKey)?.toString() ?? '';
+        merged[src.outputField] =
+            (lookups[src.outputField]?[key] ?? 0.0).toString();
+      }
+      return merged;
+    }).toList();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   List<Map<String, dynamic>> get _sortedRows {
     if (_sortField == null) return _rows;
@@ -295,6 +424,40 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
                 onChanged: (k, v) => setState(() => _inputValues[k] = v),
                 onRun: _loading ? null : _run,
               ),
+            // ── Search bar ───────────────────────────────────────────────────
+            if (_hasRun && _rows.isNotEmpty)
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: 'بحث في النتائج...',
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                  ),
+                ),
+              ),
             // ── Content ──────────────────────────────────────────────────────
             Expanded(child: _buildContent()),
           ],
@@ -371,7 +534,7 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
     }
 
     final totalWidth = fields.fold(0.0, (s, f) => s + f.width);
-    final sorted = _sortedRows;
+    final sorted = _filteredSortedRows;
 
     // Compute summary sums for numeric fields
     final sums = <String, double>{};
@@ -548,9 +711,12 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                Text('${sorted.length} سجل',
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey.shade600)),
+                Text(
+                  _searchQuery.isEmpty
+                      ? '${sorted.length} سجل'
+                      : '${sorted.length} من ${_rows.length} سجل',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
               ],
             ),
           ),
@@ -652,7 +818,7 @@ class _InputPanel extends StatelessWidget {
 
       case ReportInputType.select:
         return DropdownButtonFormField<String>(
-          value: val.isEmpty ? null : val,
+          initialValue: val.isEmpty ? null : val,
           isExpanded: true,
           decoration:
               InputDecoration(labelText: input.labelAr, isDense: true),

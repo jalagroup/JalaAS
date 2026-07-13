@@ -247,6 +247,7 @@ class ReportFilter {
   }
 
   static dynamic _extract(Map<String, dynamic> row, String key) {
+    if (row.containsKey(key)) return row[key];
     if (key.contains('.')) {
       final parts = key.split('.');
       dynamic cur = row;
@@ -261,6 +262,65 @@ class ReportFilter {
     }
     return row[key];
   }
+}
+
+// ── Extra data source (for multi-API reports) ─────────────────────────────────
+//
+// Each extra source makes its own API call. Results are grouped by [joinKey]
+// and aggregated ([aggregate]: "sum" | "first"), then merged into the primary
+// rows as a new field named [outputField].
+
+class ReportDataSource {
+  final String id;            // unique label for logging/debugging
+  final ReportCompany company;
+  final String endpoint;
+  final Map<String, String> fixedParams;
+  final String joinKey;       // field shared with primary rows to join on (e.g. "item")
+  final String valueField;    // numeric field to extract/aggregate (e.g. "endBalance")
+  final String outputField;   // name of the new field added to merged rows
+  final List<ReportFilter> preFilters; // applied before aggregation
+  final String aggregate;     // "sum" | "first"
+
+  const ReportDataSource({
+    required this.id,
+    required this.company,
+    required this.endpoint,
+    this.fixedParams = const {},
+    required this.joinKey,
+    required this.valueField,
+    required this.outputField,
+    this.preFilters = const [],
+    this.aggregate = 'sum',
+  });
+
+  factory ReportDataSource.fromJson(Map<String, dynamic> j) => ReportDataSource(
+        id: j['id'] as String? ?? '',
+        company: ReportCompany.values.firstWhere(
+          (c) => c.name == (j['company'] as String? ?? 'jalaf'),
+          orElse: () => ReportCompany.jalaf,
+        ),
+        endpoint: j['endpoint'] as String? ?? '',
+        fixedParams: Map<String, String>.from(j['fixed_params'] as Map? ?? {}),
+        joinKey: j['join_key'] as String? ?? 'item',
+        valueField: j['value_field'] as String? ?? 'endBalance',
+        outputField: j['output_field'] as String? ?? j['id'] as String? ?? '',
+        preFilters: (j['pre_filters'] as List<dynamic>? ?? [])
+            .map((e) => ReportFilter.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        aggregate: j['aggregate'] as String? ?? 'sum',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'company': company.name,
+        'endpoint': endpoint,
+        'fixed_params': fixedParams,
+        'join_key': joinKey,
+        'value_field': valueField,
+        'output_field': outputField,
+        'pre_filters': preFilters.map((e) => e.toJson()).toList(),
+        'aggregate': aggregate,
+      };
 }
 
 // ── Full report config ────────────────────────────────────────────────────────
@@ -282,6 +342,12 @@ class CustomReportConfig {
   final bool showSummaryRow;
   final String? groupByField;       // group multi-row results by this field key
   final bool byWarehouse;
+  // ── Multi-source support ───────────────────────────────────────────────────
+  /// When non-empty, only these field keys are requested from the primary API
+  /// (avoids sending derived/extra-source field names to Bisan).
+  final List<String> primaryApiFields;
+  /// Additional API calls whose results are joined into the primary rows.
+  final List<ReportDataSource> extraSources;
 
   const CustomReportConfig({
     required this.company,
@@ -293,6 +359,8 @@ class CustomReportConfig {
     this.showSummaryRow = false,
     this.groupByField,
     this.byWarehouse = false,
+    this.primaryApiFields = const [],
+    this.extraSources = const [],
   });
 
   factory CustomReportConfig.fromJson(Map<String, dynamic> j) =>
@@ -315,6 +383,11 @@ class CustomReportConfig {
         showSummaryRow: j['show_summary_row'] as bool? ?? false,
         groupByField: j['group_by_field'] as String?,
         byWarehouse: j['by_warehouse'] as bool? ?? false,
+        primaryApiFields:
+            List<String>.from(j['primary_api_fields'] as List? ?? []),
+        extraSources: (j['extra_sources'] as List<dynamic>? ?? [])
+            .map((e) => ReportDataSource.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -327,6 +400,8 @@ class CustomReportConfig {
         'show_summary_row': showSummaryRow,
         'group_by_field': groupByField,
         'by_warehouse': byWarehouse,
+        'primary_api_fields': primaryApiFields,
+        'extra_sources': extraSources.map((e) => e.toJson()).toList(),
       };
 }
 

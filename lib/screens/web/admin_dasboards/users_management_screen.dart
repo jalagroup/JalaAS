@@ -4,6 +4,7 @@ import 'package:jala_as/models/position.dart';
 import 'package:jala_as/models/salesman.dart';
 import 'package:jala_as/screens/web/admin_dasboards/assign_additional_contacts_dialog.dart';
 import 'package:jala_as/services/api_service.dart';
+import '../../../models/role.dart';
 import '../../../models/user.dart';
 import '../../../services/supabase_service.dart';
 import '../../../utils/helpers.dart';
@@ -18,6 +19,7 @@ class UsersManagementScreen extends StatefulWidget {
 
 class _UsersManagementScreenState extends State<UsersManagementScreen> {
   List<AppUser> _users = [];
+  List<Role> _roles = [];
   bool _isLoading = true;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -64,7 +66,10 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     try {
       final loggedInUser =
           widget.currentUser ?? await SupabaseService.getCurrentUser();
-      final allUsers = await SupabaseService.getUsers();
+      final allUsersFuture = SupabaseService.getUsers();
+      final rolesFuture = SupabaseService.getRoles();
+      final allUsers = await allUsersFuture;
+      final roles = await rolesFuture;
       final List<AppUser> managedUsers;
       if (loggedInUser?.isQualityControlAdmin == true) {
         // Quality control admins only manage quality_controller users
@@ -76,6 +81,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       }
       setState(() {
         _users = managedUsers;
+        _roles = roles;
         _isLoading = false;
       });
     } catch (e) {
@@ -97,6 +103,157 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           user.email.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           user.salesman.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
+  }
+
+  Future<void> _showAssignRoleDialog(AppUser user) async {
+    String? selectedRoleId = user.roleId;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.shield_outlined,
+                      color: Color(0xFF8B5CF6), size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'تعيين الدور - ${user.username}',
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2C3E50)),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 320,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String?>(
+                      value: null,
+                      groupValue: selectedRoleId,
+                      onChanged: (v) =>
+                          setDlgState(() => selectedRoleId = v),
+                      title: const Text('بدون دور',
+                          style: TextStyle(
+                              fontSize: 13, color: Color(0xFF9CA3AF))),
+                      activeColor: Colors.red.shade300,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 0),
+                      dense: true,
+                    ),
+                    const Divider(height: 1),
+                    ..._roles.map((role) => Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RadioListTile<String?>(
+                              value: role.id,
+                              groupValue: selectedRoleId,
+                              onChanged: (v) =>
+                                  setDlgState(() => selectedRoleId = v),
+                              title: Text(role.nameAr,
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF2C3E50))),
+                              subtitle: role.description != null &&
+                                      role.description!.isNotEmpty
+                                  ? Text(role.description!,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF546E7A)))
+                                  : null,
+                              activeColor: const Color(0xFF8B5CF6),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 0),
+                              dense: true,
+                            ),
+                            const Divider(height: 1),
+                          ],
+                        )),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF546E7A)),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF8B5CF6),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await SupabaseService.assignUserRole(user.id, selectedRoleId);
+        if (mounted) {
+          Helpers.showSnackBar(context, 'تم تعيين الدور بنجاح');
+        }
+        _loadUsers();
+      } catch (e) {
+        if (mounted) {
+          Helpers.showSnackBar(context, 'فشل في تعيين الدور', isError: true);
+        }
+      }
+    }
+  }
+
+  String _getRoleName(AppUser user) {
+    if (user.roleId == null) return 'بدون دور';
+    try {
+      return _roles.firstWhere((r) => r.id == user.roleId).nameAr;
+    } catch (_) {
+      return 'دور غير معروف';
+    }
+  }
+
+  Widget _buildRoleBadge(AppUser user) {
+    if (_roles.isEmpty) return const SizedBox.shrink();
+    final hasRole = user.roleId != null;
+    return Text(
+      _getRoleName(user),
+      style: TextStyle(
+        fontSize: 10,
+        color:
+            hasRole ? const Color(0xFF8B5CF6) : Colors.red.shade300,
+        fontWeight: FontWeight.w500,
+      ),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+    );
   }
 
   Future<void> _showCreateUserDialog() async {
@@ -747,7 +904,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final isEven = index % 2 == 0;
 
     return Container(
-      height: 52,
+      constraints: const BoxConstraints(minHeight: 52),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: isEven ? Colors.white : const Color(0xFFFAFBFC),
@@ -782,14 +939,21 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      user.username,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2C3E50),
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          user.username,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2C3E50),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        _buildRoleBadge(user),
+                      ],
                     ),
                   ),
                 ],
@@ -927,6 +1091,26 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                     ),
                     const SizedBox(width: 6),
                   ],
+
+                  // Role assignment button
+                  InkWell(
+                    onTap: () => _showAssignRoleDialog(user),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        size: 14,
+                        color: Color(0xFF8B5CF6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
 
                   // Edit button
                   InkWell(
@@ -1207,6 +1391,27 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               const SizedBox(width: 6),
                             ],
 
+                            // Role assignment button
+                            InkWell(
+                              onTap: () => _showAssignRoleDialog(user),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF8B5CF6)
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Icon(
+                                  Icons.shield_outlined,
+                                  size: 16,
+                                  color: Color(0xFF8B5CF6),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+
                             // Edit button
                             InkWell(
                               onTap: () => _showEditUserDialog(user),
@@ -1215,8 +1420,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                 width: 32,
                                 height: 32,
                                 decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFF135467).withValues(alpha: 0.1),
+                                  color: const Color(0xFF135467)
+                                      .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Icon(
