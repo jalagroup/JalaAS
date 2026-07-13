@@ -10,7 +10,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:jala_as/screens/web/admin_dasboards/admin_dashboard.dart';
 import 'package:jala_as/screens/web/web_login_screen.dart';
-import 'package:jala_as/screens/web/web_statements_screen.dart';
+import 'package:jala_as/screens/web/web_welcome_screen.dart';
+import 'package:jala_as/screens/web/no_role_screen.dart';
+import 'package:jala_as/services/permission_service.dart';
 import 'package:jala_as/services/api_service.dart';
 import 'package:jala_as/services/local_database_service.dart';
 import 'package:jala_as/services/fcm_service.dart';
@@ -220,7 +222,7 @@ class _SplashScreenState extends State<SplashScreen> {
           }
 
           if (!mounted) return;
-          _navigateToHome(user);
+          await _navigateToHome(user);
         } else {
           await SupabaseService.signOut();
           if (!mounted) return;
@@ -242,28 +244,28 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  void _navigateToHome(user) {
+  Future<void> _navigateToHome(user) async {
     if (!mounted) return;
 
-    // Setup FCM token for this user (web uses VAPID key via service worker)
     FCMService.setupForUser(user, navigatorKey: navigatorKey);
+    await PermissionService.loadForUser(user.id);
+
+    if (!mounted) return;
 
     Widget targetScreen;
-
-    if (user.isSystemAdmin || user.isSalesOfficer || user.isQualityControlAdmin) {
+    if (!PermissionService.hasRole) {
+      targetScreen = const NoRoleScreen();
+    } else if (PermissionService.isAdminInterface) {
       targetScreen = const AdminDashboard();
     } else {
-      targetScreen = WebStatementsScreen(user: user);
+      targetScreen = const WebWelcomeScreen();
     }
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 300),
       ),

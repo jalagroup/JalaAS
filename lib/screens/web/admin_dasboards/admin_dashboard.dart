@@ -1,7 +1,6 @@
 // lib/screens/web/admin_dashboard.dart - Updated with Task Checklist Management
 import 'package:flutter/material.dart';
 import 'package:jala_as/screens/web/admin_dasboards/quality_management/quality_groups_screen.dart';
-import 'package:jala_as/screens/web/quality_system/admin_issues_screen.dart';
 import 'package:jala_as/screens/web/admin_dasboards/quality_management/quality_management_dashboard.dart';
 import 'package:jala_as/screens/web/admin_dasboards/sales_returns_admin_screen.dart';
 import 'package:jala_as/screens/web/admin_dasboards/tasks_management/task_checklists_admin_screen.dart';
@@ -10,14 +9,15 @@ import 'package:jala_as/screens/web/salary/calculate_salary_screen.dart';
 import 'package:jala_as/screens/web/salary/review_report_screen.dart';
 import 'package:jala_as/screens/web/salary/set_targets_screen.dart';
 import '../../../models/user.dart';
+import '../../../models/feature_definition.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/permission_service.dart';
 import '../../../utils/helpers.dart';
 import '../../../utils/constants.dart';
 import 'users_management_screen.dart';
 import 'sync_data_screen.dart';
 import 'quality_management_screen.dart';
 import 'fuel_management_screen.dart';
-import 'sales_officer_dashboard.dart';
 import '../web_login_screen.dart';
 import '../../profile_screen.dart';
 import 'positions_management_screen.dart';
@@ -52,31 +52,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
     try {
       _currentUser = await SupabaseService.getCurrentUser();
 
-      if (_currentUser == null ||
-          (!_currentUser!.isSystemAdmin &&
-              !_currentUser!.isSalesOfficer &&
-              !_currentUser!.isQualityControlAdmin)) {
+      if (_currentUser == null) {
         if (mounted) {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const WebLoginScreen()),
+            MaterialPageRoute(builder: (_) => const WebLoginScreen()),
+          );
+        }
+        return;
+      }
+
+      // Load permissions if not already in memory (e.g. after browser refresh).
+      if (!PermissionService.hasRole) {
+        await PermissionService.loadForUser(_currentUser!.id);
+      }
+
+      if (!PermissionService.hasRole || !PermissionService.isAdminInterface) {
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const WebLoginScreen()),
           );
         }
         return;
       }
 
       _setupNavigationBasedOnPermissions();
-      setState(() {
-        _isLoadingUser = false;
-      });
+      if (mounted) setState(() => _isLoadingUser = false);
     } catch (e) {
       if (mounted) {
-        Helpers.showSnackBar(
-          context,
-          'فشل في تحميل بيانات المستخدم',
-          isError: true,
-        );
+        Helpers.showSnackBar(context, 'فشل في تحميل بيانات المستخدم',
+            isError: true);
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const WebLoginScreen()),
+          MaterialPageRoute(builder: (_) => const WebLoginScreen()),
         );
       }
     }
@@ -86,180 +92,44 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _pages.clear();
     _navigationItems.clear();
 
-    // ── Sales Officer ─────────────────────────────────────────────────────────
-    if (_currentUser!.isSalesOfficer) {
-      _pages.addAll([
-        SalesReturnsAdminScreen(user: _currentUser!),
-        SalesOfficerDashboard(user: _currentUser!),
-      ]);
-      _navigationItems.addAll([
-        _NavigationItem(
-          icon: Icons.assignment_return_outlined,
-          selectedIcon: Icons.assignment_return,
-          label: 'المرتجعات',
-        ),
-        _NavigationItem(
-          icon: Icons.people_outline,
-          selectedIcon: Icons.people,
-          label: 'الزبائن الجدد',
-        ),
-      ]);
+    void addIf(String key, Widget page, _NavigationItem item) {
+      if (PermissionService.hasFeature(key)) {
+        _pages.add(page);
+        _navigationItems.add(item);
+      }
     }
 
-    // ── Super Admin (salesman = '0') ──────────────────────────────────────────
-    else if (_currentUser!.isSuperAdmin) {
-      _pages.addAll([
-        const UsersManagementScreen(),
-        const RolesManagementScreen(),
-        const ReportBuilderScreen(),
-        const QualityManagementDashboard(),
-        const ReportListsScreen(),
-        const TaskChecklistsAdminScreen(),
-        const FuelManagementScreen(),
-        const PositionsManagementScreen(),
-        const SyncDataScreen(),
-      ]);
-      _navigationItems.addAll([
-        _NavigationItem(
-          icon: Icons.people_outline,
-          selectedIcon: Icons.people,
-          label: 'إدارة المستخدمين',
-        ),
-        _NavigationItem(
-          icon: Icons.shield_outlined,
-          selectedIcon: Icons.shield,
-          label: 'إدارة الأدوار',
-        ),
-        _NavigationItem(
-          icon: Icons.bar_chart_outlined,
-          selectedIcon: Icons.bar_chart,
-          label: 'منشئ التقارير',
-        ),
-        _NavigationItem(
-          icon: Icons.checklist_outlined,
-          selectedIcon: Icons.checklist,
-          label: 'إدارة مراقبة الجودة',
-        ),
-        _NavigationItem(
-          icon: Icons.assignment_rounded,
-          selectedIcon: Icons.assignment_rounded,
-          label: 'قوائم التقارير',
-        ),
-        _NavigationItem(
-          icon: Icons.task_alt_outlined,
-          selectedIcon: Icons.task_alt,
-          label: 'إدارة قوائم المهام',
-        ),
-        _NavigationItem(
-          icon: Icons.local_gas_station_outlined,
-          selectedIcon: Icons.local_gas_station,
-          label: 'إدارة المحروقات',
-        ),
-        _NavigationItem(
-          icon: Icons.work_outline,
-          selectedIcon: Icons.work,
-          label: 'المسميات الوظيفية',
-        ),
-        _NavigationItem(
-          icon: Icons.sync,
-          selectedIcon: Icons.sync,
-          label: 'مزامنة البيانات',
-        ),
-      ]);
-    }
+    addIf(AppFeatures.usersManagement, const UsersManagementScreen(),
+        _NavigationItem(icon: Icons.people_outline, selectedIcon: Icons.people, label: 'إدارة المستخدمين'));
 
-    // ── Quality Admin (salesman = '1') ────────────────────────────────────────
-    else if (_currentUser!.isQualityAdmin) {
-      _pages.addAll([
-        const QualityManagementDashboard(),
-        const ReportListsScreen(),
-        const TaskChecklistsAdminScreen(),
-        AdminIssuesScreen(user: _currentUser!),
-        const UsersManagementScreen(),
-      ]);
-      _navigationItems.addAll([
-        _NavigationItem(
-          icon: Icons.checklist_outlined,
-          selectedIcon: Icons.checklist,
-          label: 'إدارة مراقبة الجودة',
-        ),
-        _NavigationItem(
-          icon: Icons.assignment_rounded,
-          selectedIcon: Icons.assignment_rounded,
-          label: 'قوائم التقارير',
-        ),
-        _NavigationItem(
-          icon: Icons.task_alt_outlined,
-          selectedIcon: Icons.task_alt,
-          label: 'إدارة قوائم المهام',
-        ),
-        _NavigationItem(
-          icon: Icons.warning_amber_outlined,
-          selectedIcon: Icons.warning_amber,
-          label: 'إدارة المشاكل',
-        ),
-        _NavigationItem(
-          icon: Icons.people_outline,
-          selectedIcon: Icons.people,
-          label: 'إدارة المستخدمين',
-        ),
-      ]);
-    }
+    addIf(AppFeatures.rolesManagement, const RolesManagementScreen(),
+        _NavigationItem(icon: Icons.shield_outlined, selectedIcon: Icons.shield, label: 'إدارة الأدوار'));
 
-    // ── Fuel Admin (salesman = '2') ───────────────────────────────────────────
-    else if (_currentUser!.isFuelAdmin) {
-      _pages.add(const FuelManagementScreen());
-      _navigationItems.add(
-        _NavigationItem(
-          icon: Icons.local_gas_station_outlined,
-          selectedIcon: Icons.local_gas_station,
-          label: 'إدارة المحروقات',
-        ),
-      );
-    }
+    addIf(AppFeatures.reportBuilder, const ReportBuilderScreen(),
+        _NavigationItem(icon: Icons.bar_chart_outlined, selectedIcon: Icons.bar_chart, label: 'منشئ التقارير'));
 
-    // ── Quality Control Admin (user_type = 'quality_control_admin') ───────────
-    else if (_currentUser!.isQualityControlAdmin) {
-      _pages.addAll([
-        const QualityManagementDashboard(),
-        const ReportListsScreen(),
-        const TaskChecklistsAdminScreen(),
-        AdminIssuesScreen(user: _currentUser!),
-        UsersManagementScreen(currentUser: _currentUser),
-      ]);
-      _navigationItems.addAll([
-        _NavigationItem(
-          icon: Icons.verified_user_outlined,
-          selectedIcon: Icons.verified_user,
-          label: 'إدارة مراقبة الجودة',
-        ),
-        _NavigationItem(
-          icon: Icons.assignment_rounded,
-          selectedIcon: Icons.assignment_rounded,
-          label: 'قوائم التقارير',
-        ),
-        _NavigationItem(
-          icon: Icons.task_alt_outlined,
-          selectedIcon: Icons.task_alt,
-          label: 'إدارة قوائم المهام',
-        ),
-        _NavigationItem(
-          icon: Icons.warning_amber_outlined,
-          selectedIcon: Icons.warning_amber,
-          label: 'إدارة المشاكل',
-        ),
-        _NavigationItem(
-          icon: Icons.people_outline,
-          selectedIcon: Icons.people,
-          label: 'إدارة المستخدمين',
-        ),
-      ]);
-    }
+    addIf(AppFeatures.qualityManagement, const QualityManagementDashboard(),
+        _NavigationItem(icon: Icons.checklist_outlined, selectedIcon: Icons.checklist, label: 'إدارة مراقبة الجودة'));
 
-    // Reset selected index if out of bounds
-    if (_selectedIndex >= _pages.length) {
-      _selectedIndex = 0;
-    }
+    addIf(AppFeatures.reportManagement, const ReportListsScreen(),
+        _NavigationItem(icon: Icons.assignment_rounded, selectedIcon: Icons.assignment_rounded, label: 'قوائم التقارير'));
+
+    addIf(AppFeatures.taskChecklistsAdmin, const TaskChecklistsAdminScreen(),
+        _NavigationItem(icon: Icons.task_alt_outlined, selectedIcon: Icons.task_alt, label: 'إدارة قوائم المهام'));
+
+    addIf(AppFeatures.salesReturnsAdmin, SalesReturnsAdminScreen(user: _currentUser!),
+        _NavigationItem(icon: Icons.assignment_return_outlined, selectedIcon: Icons.assignment_return, label: 'المرتجعات'));
+
+    addIf(AppFeatures.fuelManagement, const FuelManagementScreen(),
+        _NavigationItem(icon: Icons.local_gas_station_outlined, selectedIcon: Icons.local_gas_station, label: 'إدارة المحروقات'));
+
+    addIf(AppFeatures.positionsManagement, const PositionsManagementScreen(),
+        _NavigationItem(icon: Icons.work_outline, selectedIcon: Icons.work, label: 'المسميات الوظيفية'));
+
+    addIf(AppFeatures.syncData, const SyncDataScreen(),
+        _NavigationItem(icon: Icons.sync, selectedIcon: Icons.sync, label: 'مزامنة البيانات'));
+
+    if (_selectedIndex >= _pages.length) _selectedIndex = 0;
   }
 
   void _openProfile() {
@@ -623,21 +493,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  String _getUserTypeDisplayText() {
-    if (_currentUser?.isSuperAdmin == true) return 'مدير عام';
-    if (_currentUser?.isQualityAdmin == true) return 'مدير مراقبة الجودة';
-    if (_currentUser?.isFuelAdmin == true) return 'مدير المحروقات';
-    if (_currentUser?.isSalesOfficer == true) return 'موظف المبيعات';
-    return _currentUser?.userTypeDisplayText ?? '';
-  }
+  String _getUserTypeDisplayText() => PermissionService.roleName;
 
-  IconData _getAdminTypeIcon() {
-    if (_currentUser?.isSuperAdmin == true) return Icons.admin_panel_settings;
-    if (_currentUser?.isQualityAdmin == true) return Icons.checklist;
-    if (_currentUser?.isFuelAdmin == true) return Icons.local_gas_station;
-    if (_currentUser?.isSalesOfficer == true) return Icons.business_center;
-    return Icons.person;
-  }
+  IconData _getAdminTypeIcon() => Icons.admin_panel_settings;
 
   Widget _buildDrawer() {
     return Drawer(

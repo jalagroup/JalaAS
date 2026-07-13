@@ -4,9 +4,11 @@ import '../../services/fcm_service.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../../services/permission_service.dart';
 import 'admin_dasboards/admin_dashboard.dart';
 import 'web_main.dart' show navigatorKey;
-import 'web_statements_screen.dart';
+import 'web_welcome_screen.dart';
+import 'no_role_screen.dart';
 
 class WebLoginScreen extends StatefulWidget {
   const WebLoginScreen({super.key});
@@ -87,7 +89,7 @@ class _WebLoginScreenState extends State<WebLoginScreen> {
             await SupabaseService.signOut();
             return;
           }
-          _navigateBasedOnUserType(user);
+          await _navigateBasedOnUserType(user);
         }
       }
     } catch (e) {
@@ -104,18 +106,21 @@ class _WebLoginScreenState extends State<WebLoginScreen> {
     }
   }
 
-  void _navigateBasedOnUserType(user) {
+  Future<void> _navigateBasedOnUserType(user) async {
     if (!mounted) return;
 
-    // Save FCM token for this user after login
     FCMService.setupForUser(user, navigatorKey: navigatorKey);
+    await PermissionService.loadForUser(user.id);
+
+    if (!mounted) return;
 
     Widget targetScreen;
-
-    if (user.isSystemAdmin || user.isSalesOfficer || user.isQualityControlAdmin) {
+    if (!PermissionService.hasRole) {
+      targetScreen = const NoRoleScreen();
+    } else if (PermissionService.isAdminInterface) {
       targetScreen = const AdminDashboard();
     } else {
-      targetScreen = WebStatementsScreen(user: user);
+      targetScreen = const WebWelcomeScreen();
     }
 
     Navigator.of(context).pushReplacement(
