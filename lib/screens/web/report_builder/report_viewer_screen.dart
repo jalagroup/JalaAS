@@ -24,6 +24,7 @@ class ReportViewerScreen extends StatefulWidget {
 
 class _ReportViewerScreenState extends State<ReportViewerScreen> {
   static const _primary = Color(AppConstants.primaryColor);
+  static const _accent = Color(AppConstants.accentColor);
 
   // User-entered values for each input parameter
   final Map<String, String> _inputValues = {};
@@ -32,6 +33,7 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
   List<Map<String, dynamic>> _rows = [];
   String? _errorMessage;
   bool _hasRun = false;
+  String _loadingPhase = '';
 
   String? _sortField;
   bool _sortAsc = true;
@@ -203,10 +205,11 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
 
       // Merge extra API sources (multi-source reports)
       if (_cfg.extraSources.isNotEmpty) {
+        setState(() => _loadingPhase = 'دمج ${_cfg.extraSources.length} مصادر إضافية...');
         rows = await _mergeExtraSources(rows);
       }
 
-      setState(() => _rows = rows);
+      setState(() { _rows = rows; _loadingPhase = ''; });
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -468,7 +471,26 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
 
   Widget _buildContent() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(strokeWidth: 3, color: _primary),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              _loadingPhase.isEmpty ? 'جاري التحميل...' : _loadingPhase,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      );
     }
     if (_errorMessage != null) {
       return Center(
@@ -557,36 +579,45 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
         border: Border.all(color: Colors.grey.shade200),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // ── Sticky header ────────────────────────────────────────────────
-          SingleChildScrollView(
-            controller: _headerHScroll,
-            scrollDirection: Axis.horizontal,
-            physics: const ClampingScrollPhysics(),
-            child: SizedBox(
-              width: totalWidth,
-              child: Container(
-                color: const Color(AppConstants.primaryColor),
-                child: Row(
-                  children: fields.map((f) {
-                    final isSorted = _sortField == f.key;
-                    return GestureDetector(
-                      onTap: f.sortable
-                          ? () => setState(() {
-                                if (_sortField == f.key) {
-                                  _sortAsc = !_sortAsc;
-                                } else {
-                                  _sortField = f.key;
-                                  _sortAsc = true;
-                                }
-                              })
-                          : null,
-                      child: SizedBox(
-                        width: f.width,
-                        height: 48,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ClipRect(
+        child: Column(
+          children: [
+            // ── Sticky header ──────────────────────────────────────────────
+            SingleChildScrollView(
+              controller: _headerHScroll,
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: SizedBox(
+                width: totalWidth,
+                child: Container(
+                  color: _primary,
+                  child: Row(
+                    children: fields.map((f) {
+                      final isSorted = _sortField == f.key;
+                      return GestureDetector(
+                        onTap: f.sortable
+                            ? () => setState(() {
+                                  if (_sortField == f.key) {
+                                    _sortAsc = !_sortAsc;
+                                  } else {
+                                    _sortField = f.key;
+                                    _sortAsc = true;
+                                  }
+                                })
+                            : null,
+                        child: Container(
+                          width: f.width,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            border: Border(
+                              right: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                width: 0.5,
+                              ),
+                            ),
+                          ),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 8),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -620,120 +651,189 @@ class _ReportViewerScreenState extends State<ReportViewerScreen> {
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ),
-          // ── Data rows ─────────────────────────────────────────────────────
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _dataVScroll,
-              child: SingleChildScrollView(
-                controller: _dataHScroll,
-                scrollDirection: Axis.horizontal,
-                physics: const ClampingScrollPhysics(),
-                child: SizedBox(
-                  width: totalWidth,
-                  child: Column(
-                    children: [
-                      ...sorted.asMap().entries.map((e) {
-                        final i = e.key;
-                        final row = e.value;
-                        final isEven = i.isEven;
-                        return Container(
-                          color: isEven
-                              ? Colors.grey.shade50
-                              : Colors.white,
-                          child: Row(
-                            children: fields.map((f) {
-                              final raw = _extractField(row, f.key);
-                              final text = _format(raw, f.format);
-                              return SizedBox(
-                                width: f.width,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 8),
-                                  child: Text(
-                                    text,
-                                    textAlign: _textAlign(f.format),
-                                    style: const TextStyle(fontSize: 12),
-                                    maxLines: f.wrapLines,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      }),
-                      // Summary row
-                      if (_cfg.showSummaryRow && sums.isNotEmpty)
-                        Container(
-                          color: const Color(AppConstants.primaryColor)
-                              .withValues(alpha: 0.08),
-                          child: Row(
-                            children: fields.map((f) {
-                              final hasSum = sums.containsKey(f.key);
-                              return SizedBox(
-                                width: f.width,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 10),
-                                  child: Text(
-                                    hasSum
-                                        ? _format(sums[f.key], f.format)
-                                        : (fields.first == f ? 'الإجمالي' : ''),
-                                    textAlign: hasSum
-                                        ? TextAlign.center
-                                        : TextAlign.right,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                    ],
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
             ),
-          ),
-          // ── Footer: row count ─────────────────────────────────────────────
-          Container(
-            color: Colors.grey.shade50,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  _searchQuery.isEmpty
-                      ? '${sorted.length} سجل'
-                      : '${sorted.length} من ${_rows.length} سجل',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            // ── Data rows ─────────────────────────────────────────────────
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _dataVScroll,
+                child: SingleChildScrollView(
+                  controller: _dataHScroll,
+                  scrollDirection: Axis.horizontal,
+                  physics: const ClampingScrollPhysics(),
+                  child: SizedBox(
+                    width: totalWidth,
+                    child: Column(
+                      children: [
+                        ...sorted.asMap().entries.map((e) {
+                          final i = e.key;
+                          final row = e.value;
+                          final baseColor =
+                              i.isEven ? Colors.grey.shade50 : Colors.white;
+                          return _HoverRow(
+                            baseColor: baseColor,
+                            child: Row(
+                              children: fields.map((f) {
+                                final raw = _extractField(row, f.key);
+                                final text = _format(raw, f.format);
+                                final isNumeric =
+                                    f.format == FieldFormat.number ||
+                                        f.format == FieldFormat.currency ||
+                                        f.format == FieldFormat.percentage;
+                                return Container(
+                                  width: f.width,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      right: BorderSide(
+                                        color: Colors.grey.shade200,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  child: isNumeric
+                                      ? Directionality(
+                                          textDirection: ui.TextDirection.ltr,
+                                          child: Text(
+                                            text,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                                fontSize: 12),
+                                            maxLines: f.wrapLines,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                          ),
+                                        )
+                                      : Text(
+                                          text,
+                                          textAlign: TextAlign.right,
+                                          style:
+                                              const TextStyle(fontSize: 12),
+                                          maxLines: f.wrapLines,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        }),
+                        // Summary row
+                        if (_cfg.showSummaryRow && sums.isNotEmpty)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: _accent.withValues(alpha: 0.10),
+                              border: Border(
+                                top: BorderSide(
+                                  color: _accent.withValues(alpha: 0.20),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: fields.map((f) {
+                                final hasSum = sums.containsKey(f.key);
+                                return Container(
+                                  width: f.width,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      right: BorderSide(
+                                        color: Colors.grey.shade200,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 10),
+                                  child: hasSum
+                                      ? Directionality(
+                                          textDirection: ui.TextDirection.ltr,
+                                          child: Text(
+                                            _format(sums[f.key], f.format),
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                              color: _accent,
+                                            ),
+                                          ),
+                                        )
+                                      : Text(
+                                          fields.first == f
+                                              ? 'الإجمالي'
+                                              : '',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: _accent,
+                                          ),
+                                        ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+            // ── Footer: row count ──────────────────────────────────────────
+            Container(
+              color: Colors.grey.shade50,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    _searchQuery.isEmpty
+                        ? '${sorted.length} سجل'
+                        : '${sorted.length} من ${_rows.length} سجل',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  TextAlign _textAlign(FieldFormat fmt) {
-    switch (fmt) {
-      case FieldFormat.number:
-      case FieldFormat.currency:
-      case FieldFormat.percentage:
-        return TextAlign.center;
-      default:
-        return TextAlign.right;
-    }
+}
+
+// ── Hover row ─────────────────────────────────────────────────────────────────
+
+class _HoverRow extends StatefulWidget {
+  final Widget child;
+  final Color baseColor;
+  const _HoverRow({required this.child, required this.baseColor});
+
+  @override
+  State<_HoverRow> createState() => _HoverRowState();
+}
+
+class _HoverRowState extends State<_HoverRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: ColoredBox(
+        color: _hovered
+            ? const Color(AppConstants.primaryColor).withValues(alpha: 0.04)
+            : widget.baseColor,
+        child: widget.child,
+      ),
+    );
   }
 }
 

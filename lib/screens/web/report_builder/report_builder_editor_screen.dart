@@ -48,12 +48,16 @@ class _ReportBuilderEditorScreenState
   // ── Step 5: Filters ─────────────────────────────────────────────────────────
   final List<ReportFilter> _filters = [];
 
+  // ── Step 6: Extra sources ────────────────────────────────────────────────────
+  final List<_ExtraSourceData> _extraSources = [];
+
   static const _steps = [
     'المعلومات الأساسية',
     'إعداد الـ API',
     'مدخلات المستخدم',
     'أعمدة العرض',
     'الفلاتر',
+    'مصادر متعددة',
   ];
 
   bool get _isEdit => widget.report != null;
@@ -76,6 +80,8 @@ class _ReportBuilderEditorScreenState
       _inputs.addAll(cfg.inputs);
       _fields.addAll(cfg.fields);
       _filters.addAll(cfg.filters);
+      _extraSources.addAll(
+          cfg.extraSources.map((s) => _ExtraSourceData.fromDataSource(s)));
     }
   }
 
@@ -85,6 +91,9 @@ class _ReportBuilderEditorScreenState
     _nameCtrl.dispose();
     _descCtrl.dispose();
     _endpointCtrl.dispose();
+    for (final s in _extraSources) {
+      s.dispose();
+    }
     super.dispose();
   }
 
@@ -100,18 +109,29 @@ class _ReportBuilderEditorScreenState
     return true;
   }
 
-  CustomReportConfig _buildConfig() => CustomReportConfig(
-        company: _company,
-        endpoint: _endpointCtrl.text.trim(),
-        fixedParams: {for (final p in _fixedParams) p.key: p.value},
-        inputs: List.from(_inputs),
-        fields: List.from(_fields),
-        filters: List.from(_filters),
-        showSummaryRow: _showSummaryRow,
-        groupByField:
-            _groupByField?.trim().isEmpty == true ? null : _groupByField,
-        byWarehouse: _byWarehouse,
-      );
+  CustomReportConfig _buildConfig() {
+    final extraOutputFields = _extraSources
+        .map((s) => s.outputFieldCtrl.text.trim())
+        .toSet();
+    final primaryApiFields = _fields
+        .where((f) => !extraOutputFields.contains(f.key))
+        .map((f) => f.key)
+        .toList();
+    return CustomReportConfig(
+      company: _company,
+      endpoint: _endpointCtrl.text.trim(),
+      fixedParams: {for (final p in _fixedParams) p.key: p.value},
+      inputs: List.from(_inputs),
+      fields: List.from(_fields),
+      filters: List.from(_filters),
+      showSummaryRow: _showSummaryRow,
+      groupByField:
+          _groupByField?.trim().isEmpty == true ? null : _groupByField,
+      byWarehouse: _byWarehouse,
+      extraSources: _extraSources.map((s) => s.toDataSource()).toList(),
+      primaryApiFields: primaryApiFields,
+    );
+  }
 
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) {
@@ -223,6 +243,7 @@ class _ReportBuilderEditorScreenState
                   _step3Inputs(),
                   _step4Fields(),
                   _step5Filters(),
+                  _step6ExtraSources(),
                 ],
               ),
             ),
@@ -442,6 +463,62 @@ class _ReportBuilderEditorScreenState
                 ))),
             icon: const Icon(Icons.add, size: 16),
             label: const Text('إضافة فلتر'),
+          ),
+        ],
+      );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Step 6 – Extra Sources
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  Widget _step6ExtraSources() => _StepScaffold(
+        title: 'مصادر متعددة',
+        subtitle: 'اختياري – أضف مصادر API إضافية تُدمج مع البيانات الرئيسية',
+        children: [
+          if (_extraSources.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.indigo.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.indigo.shade100),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 18, color: Colors.indigo.shade400),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'هذه الخطوة اختيارية. يمكنك إضافة مصادر بيانات إضافية تُستعلم من Bisan وتُدمج مع نتائج المصدر الرئيسي عبر حقل ربط مشترك.',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.indigo.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ..._extraSources.asMap().entries.map((e) => _ExtraSourceCard(
+                src: e.value,
+                index: e.key + 1,
+                onChanged: () => setState(() {}),
+                onRemove: () => setState(() {
+                  e.value.dispose();
+                  _extraSources.removeAt(e.key);
+                }),
+              )),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: () => setState(() => _extraSources.add(_ExtraSourceData(
+                  endpoint: _endpointCtrl.text.trim(),
+                  expanded: true,
+                ))),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('إضافة مصدر API جديد'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo.shade600,
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       );
@@ -785,7 +862,7 @@ class _InputEditor extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<ReportInputType>(
-                  value: input.type,
+                  initialValue: input.type,
                   decoration: const InputDecoration(
                       labelText: 'النوع', isDense: true),
                   items: ReportInputType.values
@@ -918,7 +995,7 @@ class _FieldEditor extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<FieldFormat>(
-                  value: field.format,
+                  initialValue: field.format,
                   decoration: const InputDecoration(
                       labelText: 'التنسيق', isDense: true),
                   items: FieldFormat.values
@@ -1035,7 +1112,7 @@ class _FilterEditor extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButtonFormField<FilterOperator>(
-                  value: filter.operator,
+                  initialValue: filter.operator,
                   decoration: const InputDecoration(
                       labelText: 'الشرط', isDense: true),
                   items: FilterOperator.values
@@ -1069,4 +1146,374 @@ class _FilterEditor extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Extra source data holder ──────────────────────────────────────────────────
+
+class _ExtraSourceData {
+  final TextEditingController idCtrl;
+  final TextEditingController endpointCtrl;
+  final TextEditingController joinKeyCtrl;
+  final TextEditingController valueFieldCtrl;
+  final TextEditingController outputFieldCtrl;
+  ReportCompany company;
+  List<_KvPair> fixedParams;
+  List<ReportFilter> preFilters;
+  String aggregate;
+  bool expanded;
+
+  _ExtraSourceData({
+    String id = '',
+    String endpoint = '',
+    String joinKey = '',
+    String valueField = '',
+    String outputField = '',
+    this.company = ReportCompany.jalaf,
+    List<_KvPair>? fixedParams,
+    List<ReportFilter>? preFilters,
+    this.aggregate = 'sum',
+    this.expanded = true,
+  })  : idCtrl = TextEditingController(text: id),
+        endpointCtrl = TextEditingController(text: endpoint),
+        joinKeyCtrl = TextEditingController(text: joinKey),
+        valueFieldCtrl = TextEditingController(text: valueField),
+        outputFieldCtrl = TextEditingController(text: outputField),
+        fixedParams = fixedParams ?? [],
+        preFilters = preFilters ?? [];
+
+  factory _ExtraSourceData.fromDataSource(ReportDataSource src) =>
+      _ExtraSourceData(
+        id: src.id,
+        endpoint: src.endpoint,
+        joinKey: src.joinKey,
+        valueField: src.valueField,
+        outputField: src.outputField,
+        company: src.company,
+        fixedParams: src.fixedParams.entries
+            .map((e) => _KvPair(key: e.key, value: e.value))
+            .toList(),
+        preFilters: List.from(src.preFilters),
+        aggregate: src.aggregate,
+        expanded: false,
+      );
+
+  void dispose() {
+    idCtrl.dispose();
+    endpointCtrl.dispose();
+    joinKeyCtrl.dispose();
+    valueFieldCtrl.dispose();
+    outputFieldCtrl.dispose();
+  }
+
+  ReportDataSource toDataSource() => ReportDataSource(
+        id: idCtrl.text.trim(),
+        company: company,
+        endpoint: endpointCtrl.text.trim(),
+        fixedParams: {for (final p in fixedParams) p.key: p.value},
+        joinKey: joinKeyCtrl.text.trim(),
+        valueField: valueFieldCtrl.text.trim(),
+        outputField: outputFieldCtrl.text.trim(),
+        preFilters: List.from(preFilters),
+        aggregate: aggregate,
+      );
+}
+
+// ── Extra source card ─────────────────────────────────────────────────────────
+
+class _ExtraSourceCard extends StatelessWidget {
+  final _ExtraSourceData src;
+  final int index;
+  final VoidCallback onChanged;
+  final VoidCallback onRemove;
+
+  const _ExtraSourceCard({
+    required this.src,
+    required this.index,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.indigo.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header (always visible) ──────────────────────────────────────────
+          GestureDetector(
+            onTap: () {
+              src.expanded = !src.expanded;
+              onChanged();
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.indigo.shade50,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(10),
+                  topRight: const Radius.circular(10),
+                  bottomLeft: src.expanded
+                      ? Radius.zero
+                      : const Radius.circular(10),
+                  bottomRight: src.expanded
+                      ? Radius.zero
+                      : const Radius.circular(10),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.storage_outlined,
+                      size: 16, color: Colors.indigo.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      src.idCtrl.text.isNotEmpty
+                          ? src.idCtrl.text
+                          : 'مصدر #$index',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Colors.indigo.shade800,
+                        fontFamily:
+                            src.idCtrl.text.isNotEmpty ? 'monospace' : null,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    src.expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: Colors.indigo.shade400,
+                  ),
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: onRemove,
+                    child: const Icon(Icons.close, size: 16, color: Colors.red),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // ── Expanded body ────────────────────────────────────────────────────
+          if (src.expanded) ...[
+            Divider(height: 1, color: Colors.indigo.shade100),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // معرّف المصدر
+                  _indigoLabel('معرّف المصدر (ID)'),
+                  TextField(
+                    controller: src.idCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'مثال: stockBalance_wh',
+                      isDense: true,
+                    ),
+                    style:
+                        const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (_) => onChanged(),
+                  ),
+                  const SizedBox(height: 14),
+                  // الشركة
+                  _indigoLabel('الشركة'),
+                  Row(
+                    children: ReportCompany.values.map((c) {
+                      final sel = src.company == c;
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            src.company = c;
+                            onChanged();
+                          },
+                          child: Container(
+                            margin: EdgeInsets.only(
+                                left: c == ReportCompany.zfi ? 8 : 0),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? Colors.indigo.shade50
+                                  : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: sel
+                                      ? Colors.indigo.shade400
+                                      : Colors.grey.shade300,
+                                  width: sel ? 2 : 1),
+                            ),
+                            child: Text(
+                              c.displayName,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: sel
+                                    ? Colors.indigo.shade700
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  // مسار الـ API
+                  _indigoLabel('مسار الـ API (Endpoint)'),
+                  TextField(
+                    controller: src.endpointCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'مثال: REPORT/stockBalance',
+                      prefixText: '.../api/v2/jalaf/',
+                      prefixStyle:
+                          TextStyle(color: Colors.grey, fontSize: 12),
+                      isDense: true,
+                    ),
+                    onChanged: (_) => onChanged(),
+                  ),
+                  const SizedBox(height: 14),
+                  // حقول الربط والقيمة
+                  _indigoLabel('حقول الربط والقيمة'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: src.joinKeyCtrl,
+                          decoration: const InputDecoration(
+                              labelText: 'حقل الربط', isDense: true),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 12),
+                          onChanged: (_) => onChanged(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: src.valueFieldCtrl,
+                          decoration: const InputDecoration(
+                              labelText: 'حقل القيمة', isDense: true),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 12),
+                          onChanged: (_) => onChanged(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: src.outputFieldCtrl,
+                          decoration: const InputDecoration(
+                              labelText: 'اسم العمود الناتج', isDense: true),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 12),
+                          onChanged: (_) => onChanged(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  // التجميع
+                  _indigoLabel('التجميع'),
+                  DropdownButtonFormField<String>(
+                    initialValue: src.aggregate,
+                    decoration: const InputDecoration(isDense: true),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'sum',
+                          child: Text('جمع (sum)',
+                              style: TextStyle(fontSize: 13))),
+                      DropdownMenuItem(
+                          value: 'first',
+                          child: Text('أول قيمة (first)',
+                              style: TextStyle(fontSize: 13))),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) src.aggregate = v;
+                      onChanged();
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  // معاملات ثابتة
+                  _indigoLabel('معاملات ثابتة'),
+                  ...src.fixedParams.asMap().entries.map((e) => _KvRow(
+                        pair: e.value,
+                        onRemove: () {
+                          src.fixedParams.removeAt(e.key);
+                          onChanged();
+                        },
+                        onChanged: onChanged,
+                      )),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      src.fixedParams.add(_KvPair(key: '', value: ''));
+                      onChanged();
+                    },
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('إضافة معامل',
+                        style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.indigo.shade700,
+                      side: BorderSide(color: Colors.indigo.shade300),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // فلاتر قبل التجميع
+                  _indigoLabel('فلاتر قبل التجميع'),
+                  ...src.preFilters.asMap().entries.map((e) => _FilterEditor(
+                        filter: e.value,
+                        index: e.key + 1,
+                        onRemove: () {
+                          src.preFilters.removeAt(e.key);
+                          onChanged();
+                        },
+                        onChanged: (updated) {
+                          src.preFilters[e.key] = updated;
+                          onChanged();
+                        },
+                      )),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      src.preFilters.add(ReportFilter(
+                        field: 'warehouse',
+                        operator: FilterOperator.notIn,
+                        value: ['0010'],
+                      ));
+                      onChanged();
+                    },
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('إضافة فلتر',
+                        style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.indigo.shade700,
+                      side: BorderSide(color: Colors.indigo.shade300),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _indigoLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.indigo.shade700,
+          ),
+        ),
+      );
 }
